@@ -1,0 +1,11 @@
+<RCC>
+  <qresource prefix="InteractiveDigitalMontage">
+    <file>rsc/Exchange.png</file>
+    <file>rsc/Run.png</file>
+    <file>rsc/Delete.png</file>
+    <file>rsc/Down.png</file>
+    <file>rsc/Up.png</file>
+    <file>rsc/DeleteFiles.png</file>
+    <file>rsc/LoadFiles.png</file>
+  </qresource>
+</RCC>
