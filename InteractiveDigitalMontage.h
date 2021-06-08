@@ -25,8 +25,6 @@ private:
         GradientFused
     };
     MainState state = MainState::Initialized;
-
-    QLocale locale = QLocale::English;
     
     QVector<QImage> srcImgs;
     QVector<QString> srcImgNames;
@@ -36,6 +34,9 @@ private:
     
     int currSrcIdx = -1;
     void changeCurrSrcIdxTo(int newIdx); 
+
+    QImage LMRslts[2];
+    int currLMRsltIdx = 0;
 public:
     void goToPreviousImage();
     void goToNextImage();
@@ -47,7 +48,8 @@ public:
     void clearCurrentLabel();
 
     void runLabelMatching();
-    void handleLblMatchRslt(const MontageLabelMatchWorker::Result& result);
+    void handleLblMatchRslt(const MontageLabelMatchResult& result);
+    void switchLblMatchRslts();
 public:
     InteractiveDigitalMontage(QWidget *parent = Q_NULLPTR);
 private:

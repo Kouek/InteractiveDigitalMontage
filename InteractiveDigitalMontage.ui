@@ -470,7 +470,7 @@
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="toolButtonExchngLblMatchRslts">
+          <widget class="QToolButton" name="toolButtonSwitchLblMatchRslts">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -557,7 +557,7 @@
        <item>
         <layout class="QVBoxLayout" name="verticalLayout_6" stretch="5,1">
          <item>
-          <widget class="QGraphicsView" name="graphicsViewLblMatchRslts"/>
+          <widget class="MontageGraphicsView" name="graphicsViewLblMatchRslts"/>
          </item>
          <item>
           <widget class="QTextEdit" name="textEditLblMatchReslts">

@@ -9,6 +9,14 @@
 
 #include <opencv2/opencv.hpp>
 
+class MontageLabelMatchResult
+{
+public:
+    QString msg;
+    QImage label;
+    QImage image;
+};
+
 class MontageLabelMatchWorker:
     public QThread
 {
@@ -16,16 +24,15 @@ class MontageLabelMatchWorker:
 private:
     std::vector<cv::Mat> images;
     cv::Mat label;
+    std::vector<cv::Vec3b> imageColors;
 public:
     void run() override;
-    MontageLabelMatchWorker(const QVector<QImage>& images, const QVector<QImage>& labels);
+    MontageLabelMatchWorker(
+        const QVector<QImage>& images,
+        const QVector<QImage>& labels,
+        const QVector<QColor>& imagesColors
+    );
 
-    struct Result
-    {
-        QString msg;
-        QImage label;
-        QImage image;
-    };
 signals:
-    void resultReady(const Result& result);
+    void resultReady(const MontageLabelMatchResult& result);
 };

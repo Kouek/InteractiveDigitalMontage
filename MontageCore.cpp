@@ -122,6 +122,11 @@ void MontageCore::BindResult(std::string* LMResultMsg, cv::Mat* LMResultLabel, c
 	this->LMResultImage = LMResultImage;
 }
 
+void MontageCore::BindImageColors(const std::vector<Vec3b>* ImageColors)
+{
+	this->ImageColors = ImageColors;
+}
+
 void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Mat& Label)
 {
 	const int n_imgs = Images.size();
@@ -234,10 +239,13 @@ void MontageCore::VisResultLabelMap(const cv::Mat& ResultLabel, int n_label)
 	int height = ResultLabel.rows;
 	Mat color_result_map(height, width, CV_8UC3);
 	std::vector<Vec3b> label_colors;
-	for (int i = 0; i < n_label; i++)
-	{
-		label_colors.push_back(Vec3b(rand() % 256, rand() % 256, rand() % 256));
-	}
+	if (ImageColors == nullptr)
+		for (int i = 0; i < n_label; i++)
+		{
+			label_colors.push_back(Vec3b(rand() % 256, rand() % 256, rand() % 256));
+		}
+	else
+		label_colors = *ImageColors;
 	//label_colors.push_back(Vec3b(255,0,0));
 	//label_colors.push_back(Vec3b(0,255,0));
 	//label_colors.push_back(Vec3b(0,0,255));

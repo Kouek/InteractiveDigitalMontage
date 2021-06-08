@@ -274,7 +274,7 @@ void InteractiveDigitalMontage::runLabelMatching()
 
     // run label matching in another thread
     MontageLabelMatchWorker* worker =
-        new MontageLabelMatchWorker(srcImgs, intrctLbls);
+        new MontageLabelMatchWorker(srcImgs, intrctLbls, srcImgLblCols);
     connect(worker, &MontageLabelMatchWorker::resultReady,
         this, &InteractiveDigitalMontage::handleLblMatchRslt);
     connect(worker, &MontageLabelMatchWorker::finished,
@@ -282,13 +282,27 @@ void InteractiveDigitalMontage::runLabelMatching()
     worker->start();
 }
 
-void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchWorker::Result& result)
+void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult& result)
 {
     textEditSetText(
         ui.textEditLblMatchReslts, result.msg,
         Qt::GlobalColor::white, false
     );
+    LMRslts[0] = result.label;
+    LMRslts[1] = result.image;
+    
+    currLMRsltIdx = 0;
+    ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
     this->state = MainState::Labeled;
+}
+
+void InteractiveDigitalMontage::switchLblMatchRslts()
+{
+    if (currLMRsltIdx == 0)
+        currLMRsltIdx = 1;
+    else
+        currLMRsltIdx = 0;
+    ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
 }
 
 InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
@@ -318,9 +332,13 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
 
     connect(ui.toolButtonRunLblMatch, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::runLabelMatching);
+    connect(ui.toolButtonSwitchLblMatchRslts, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::switchLblMatchRslts);
     connect(ui.toolButtonClearTextEditLblMatchReslts, &QToolButton::clicked,
         ui.textEditLblMatchReslts, &QTextEdit::clear);
 
     // maximize window
     setWindowState(Qt::WindowState::WindowMaximized);
+    
+    qRegisterMetaType<MontageLabelMatchResult>("MontageLabelMatchResult");
 }

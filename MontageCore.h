@@ -19,9 +19,11 @@ private:
 
 	cv::Mat* LMResultLabel = nullptr;
 	cv::Mat* LMResultImage = nullptr;
+	const std::vector<cv::Vec3b>* ImageColors = nullptr;;
 public:
 	void Run(const std::vector<cv::Mat>& Images, const cv::Mat& Label);
 	void BindResult(std::string* Result, cv::Mat* LMResultLabel, cv::Mat* LMResultImage);
+	void BindImageColors(const std::vector<cv::Vec3b>* ImageColors);
 private:
 	cv::flann::Index* AddInertiaConstraint(const cv::Mat& Label);
 public:
