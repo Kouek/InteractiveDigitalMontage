@@ -1,7 +1,9 @@
 #include <QGraphicsLineItem>
 #include <QGraphicsPixmapItem>
-#include <QDragMoveEvent>
+#include <QMouseEvent>
 #include <QtEndian>
+
+#include <QDebug>
 
 #include "MontageGraphicsView.h"
 
@@ -47,7 +49,82 @@ void MontageGraphicsView::clearForegroundImage()
 	foreGround->setPixmap(QPixmap()); // clear
 }
 
-void MontageGraphicsView::dragMoveEvent(QDragMoveEvent* event)
+void MontageGraphicsView::configIntrctPath(bool enable, int w, const QColor& col)
 {
-	
+	if (enable == false)
+	{
+		intrctPathDat.enable = false;
+		return;
+	}
+	intrctPathDat.enable = true;
+	intrctPathDat.width = w;
+
+	// recreate IntrctPath
+	if (intrctPath != nullptr)
+		scene.removeItem(intrctPath);
+	QPen pen;
+	pen.setColor(col);
+	pen.setWidth(w);
+	intrctPath = scene.addPath(
+		intrctPathDat.path,
+		pen
+	);
+	intrctPath->setZValue(
+		(foreGround->zValue() + crossLine[0]->zValue()) / 2
+	);
+
+	// create or config intrctCursor
+	if (intrctCursor == nullptr)
+	{
+		intrctCursor = scene.addEllipse(0, 0, w, w, QPen(Qt::GlobalColor::red));
+		intrctCursor->setZValue(
+			(intrctPath->zValue() + crossLine[0]->zValue()) / 2
+		);
+	}
+	else
+		intrctCursor->setRect(0, 0, w, w);
+}
+
+void MontageGraphicsView::clearIntrctPath()
+{
+	if (intrctPathDat.enable == false)return;
+	intrctPathDat.path.clear();
+	if (intrctPath != nullptr)
+		intrctPath->setPath(intrctPathDat.path);
+}
+
+void MontageGraphicsView::mousePressEvent(QMouseEvent* event)
+{
+	if (intrctPathDat.enable == false)return;
+
+	QPointF targetPos = mapToScene(event->pos());
+
+	if (!backGround->boundingRect().contains(targetPos))return;
+	intrctPathDat.path.moveTo(targetPos);
+	intrctPathDat.isPressing = true;
+}
+
+void MontageGraphicsView::mouseMoveEvent(QMouseEvent* event)
+{
+	if (intrctPathDat.enable == false)return;
+
+	QPointF targetPos = mapToScene(event->pos());
+
+	intrctCursor->setPos(
+		targetPos.x() - 0.5 * intrctPathDat.width,
+		targetPos.y() - 0.5 * intrctPathDat.width
+	);
+
+	if (intrctPathDat.isPressing == false)return;
+	if (!backGround->boundingRect().contains(targetPos))return;
+	if ((intrctPathDat.path.currentPosition() - targetPos).manhattanLength() < intrctPathDat.width)
+		return;
+	intrctPathDat.path.lineTo(targetPos);
+	intrctPath->setPath(intrctPathDat.path);
+}
+
+void MontageGraphicsView::mouseReleaseEvent(QMouseEvent* event)
+{
+	if (intrctPathDat.enable == false)return;
+	intrctPathDat.isPressing = false;
 }

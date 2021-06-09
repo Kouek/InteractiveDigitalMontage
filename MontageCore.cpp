@@ -87,7 +87,7 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	/*double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
 	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));*/
 	assert(X_term1 + X_term1 >= 0.0);
-	return (X_term1 + X_term2) * 100;
+	return (X_term1 + X_term2) * 500;
 #endif
 
 	///请同学们填写这里的代码，这里就是实验中所说的平滑项 
@@ -158,7 +158,7 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		// smoothness comes from function pointer
 		gc->setSmoothCost(&smoothFn, &extra_data);
 
-		std::string prnt = "Before optimization energy is";
+		std::string prnt = "Before optimization energy is ";
 		TryAppendLMResultMsg(
 			prnt + std::to_string(gc->compute_energy())
 		);
@@ -167,7 +167,7 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		gc->swap(10);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
 		printf("\nAfter optimization energy is %f", gc->compute_energy());
 
-		prnt = "After optimization energy is";
+		prnt = "After optimization energy is ";
 		TryAppendLMResultMsg(
 			prnt + std::to_string(gc->compute_energy())
 		);

@@ -29,7 +29,7 @@ private:
     QVector<QImage> srcImgs;
     QVector<QString> srcImgNames;
     QVector<QColor> srcImgLblCols;
-    QVector<QImage> intrctLbls;
+    QVector<QImage> designatedLbls;
     int imgW = 0, imgH = 0;
     
     int currSrcIdx = -1;
@@ -43,9 +43,11 @@ public:
     void appendSourceImages();
     void clearSourceImages();
 
-    void appendInteractiveLabels();
-    void clearInteractiveLabels();
+    void appendLoadedLabels();
+    void appendInteractiveLabel();
+    void clearDesignatedLabels();
     void clearCurrentLabel();
+    void updateStrokeWidth();
 
     void runLabelMatching();
     void handleLblMatchRslt(const MontageLabelMatchResult& result);

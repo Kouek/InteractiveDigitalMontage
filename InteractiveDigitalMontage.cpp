@@ -3,6 +3,8 @@
 #include <QDir>
 #include <QFileDialog>
 
+#include <QDebug>
+
 // Usage:
 //   Set text of <lnEdt> to be <txt> in color <col>
 //   <lnEdt> should NOT be NULL
@@ -116,8 +118,15 @@ void InteractiveDigitalMontage::changeCurrSrcIdxTo(int newIdx)
         ui.graphicsViewIntrctLbls->loadBackgroudImage(
             srcImgs[currSrcIdx]
         );
-        ui.graphicsViewIntrctLbls->loadForegroundImage(
-            convertLabelColor(intrctLbls[currSrcIdx], srcImgLblCols[currSrcIdx])
+        if (!designatedLbls[currSrcIdx].isNull())
+            ui.graphicsViewIntrctLbls->loadForegroundImage(
+                convertLabelColor(designatedLbls[currSrcIdx], srcImgLblCols[currSrcIdx])
+            );
+        ui.graphicsViewIntrctLbls->clearIntrctPath();
+        ui.graphicsViewIntrctLbls->configIntrctPath(
+            true,
+            ui.verticalSliderStrokeWidth->value(),
+            srcImgLblCols[currSrcIdx]
         );
         lineEditSetText(ui.lineEditIntrctLbls, srcImgNames[currSrcIdx], Qt::GlobalColor::black);
     }
@@ -197,7 +206,7 @@ void InteractiveDigitalMontage::appendSourceImages()
         srcImgLblCols.push_back(
             QColor(rand() % 255, rand() % 255, rand() % 255)
         );
-        intrctLbls.push_back(QImage()); // dummy op, aviod mem-outrange
+        designatedLbls.push_back(QImage()); // dummy op, aviod mem-outrange
     }
 
     changeCurrSrcIdxTo(0);
@@ -209,12 +218,12 @@ void InteractiveDigitalMontage::clearSourceImages()
     srcImgs.clear();
     srcImgNames.clear();
     srcImgLblCols.clear();
-    intrctLbls.clear();
+    designatedLbls.clear();
     changeCurrSrcIdxTo(-1);
     state = MainState::Initialized;
 }
 
-void InteractiveDigitalMontage::appendInteractiveLabels()
+void InteractiveDigitalMontage::appendLoadedLabels()
 {
     if (state == MainState::Initialized)
     {
@@ -226,7 +235,7 @@ void InteractiveDigitalMontage::appendInteractiveLabels()
     QStringList appendFileNames =
         QFileDialog::getOpenFileNames(
             this,
-            tr("Append Source Images"),
+            tr("Append Loaded Labels"),
             QCoreApplication::applicationDirPath(),
             "Images (*.bmp)"
         );
@@ -244,8 +253,8 @@ void InteractiveDigitalMontage::appendInteractiveLabels()
         onlyNames.push_back(fn.mid(left, right - left));
     }
 
-    // reset intrctLbls
-    clearInteractiveLabels();
+    // reset designatedLbls
+    clearDesignatedLabels();
 
     for (auto fn : appendFileNames)
     {
@@ -255,7 +264,7 @@ void InteractiveDigitalMontage::appendInteractiveLabels()
         int srcImgIdx = onlyNames.indexOf(fn.mid(left, right - left));
         if (srcImgIdx == -1)
         {
-            clearInteractiveLabels();
+            clearDesignatedLabels();
             QString msg = tr("Inconsistent Label Name, Caused by: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls , msg, Qt::GlobalColor::red);
@@ -263,9 +272,10 @@ void InteractiveDigitalMontage::appendInteractiveLabels()
         }
 
         QImage img = QImage(fn);
+        img.convertTo(QImage::Format::Format_RGB888); // necessary for further painting
         if (img.isNull())
         {
-            clearInteractiveLabels();
+            clearDesignatedLabels();
             QString msg = tr("Invalid Label File: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
@@ -274,30 +284,70 @@ void InteractiveDigitalMontage::appendInteractiveLabels()
         if (img.width() != imgW
             || img.height() != imgH)
         {
-            clearInteractiveLabels();
+            clearDesignatedLabels();
             QString msg = tr("Inconsistent Label Size, Caused by: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
             return;
         }
 
-        intrctLbls[srcImgIdx] = img;
+        designatedLbls[srcImgIdx] = img;
     }
 
     changeCurrSrcIdxTo(0);
     state = MainState::SourceImageLoaded;
 }
 
-void InteractiveDigitalMontage::clearInteractiveLabels()
+void InteractiveDigitalMontage::appendInteractiveLabel()
 {
-    intrctLbls.clear();
-    intrctLbls.resize(srcImgs.size());
+    QPainterPath intrctPath = ui.graphicsViewIntrctLbls->getIntrctPath();
+    
+    if (designatedLbls[currSrcIdx].isNull())
+    {
+        // create a label image with all black pixels
+        designatedLbls[currSrcIdx] = QImage(imgW, imgH, QImage::Format::Format_ARGB32);
+        designatedLbls[currSrcIdx].fill(Qt::GlobalColor::black);
+    }
+
+    // paint interactive labels on designatedLbls[currSrcIdx]
+    QPainter painter;
+    QPen pen;
+    pen.setColor(Qt::GlobalColor::white); // label is white in designatedLbls
+    pen.setWidth(ui.verticalSliderStrokeWidth->value());
+    painter.begin(&designatedLbls[currSrcIdx]);
+    painter.setPen(pen);
+    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_SourceOver);
+    painter.drawPath(intrctPath);
+    painter.end();
+
+    // clear displayed interactive label
+    ui.graphicsViewIntrctLbls->clearIntrctPath();
+
+    // redisplay
+    changeCurrSrcIdxTo(currSrcIdx);
+}
+
+void InteractiveDigitalMontage::clearDesignatedLabels()
+{
+    designatedLbls.clear();
+    designatedLbls.resize(srcImgs.size());
     ui.graphicsViewIntrctLbls->clearForegroundImage();
 }
 
 void InteractiveDigitalMontage::clearCurrentLabel()
 {
+    designatedLbls[currSrcIdx] = QImage(); // set NULL
+    ui.graphicsViewIntrctLbls->clearForegroundImage();
+    ui.graphicsViewIntrctLbls->clearIntrctPath();
+}
 
+void InteractiveDigitalMontage::updateStrokeWidth()
+{
+    ui.graphicsViewIntrctLbls->configIntrctPath(
+        true,
+        ui.verticalSliderStrokeWidth->value(),
+        srcImgLblCols[currSrcIdx]
+    );
 }
 
 void InteractiveDigitalMontage::runLabelMatching()
@@ -329,7 +379,7 @@ void InteractiveDigitalMontage::runLabelMatching()
 
     // run label matching in another thread
     MontageLabelMatchWorker* worker =
-        new MontageLabelMatchWorker(srcImgs, intrctLbls, srcImgLblCols);
+        new MontageLabelMatchWorker(srcImgs, designatedLbls, srcImgLblCols);
     connect(worker, &MontageLabelMatchWorker::resultReady,
         this, &InteractiveDigitalMontage::handleLblMatchRslt);
     connect(worker, &MontageLabelMatchWorker::finished,
@@ -347,6 +397,7 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
     LMRslts[1] = result.image;
     
     LMRslts[2] = result.label;
+    qDebug() << "bf" << LMRslts[2].format();
     QPainter painter;
     painter.begin(&LMRslts[2]);
     // set alpha of label
@@ -356,6 +407,7 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
     painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
     painter.drawImage(0, 0, result.image);
     painter.end();
+    qDebug() << "af" << LMRslts[2].format();
     
     currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
@@ -384,16 +436,23 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
     connect(ui.toolButtonNextImg1, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::goToNextImage);
 
-    connect(ui.toolButtonAppendIntrctLbls, &QToolButton::clicked,
-        this, &InteractiveDigitalMontage::appendInteractiveLabels);
-    connect(ui.toolButtonClearIntrctLbls, &QToolButton::clicked,
-        this, &InteractiveDigitalMontage::clearInteractiveLabels);
+    connect(ui.toolButtonAppendLoadedLbls, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::appendLoadedLabels);
+    connect(ui.toolButtonClearLbls, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::clearDesignatedLabels);
     connect(ui.toolButtonClearCurrLbl, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::clearCurrentLabel);
     connect(ui.toolButtonPreImg2, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::goToPreviousImage);
     connect(ui.toolButtonNextImg2, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::goToNextImage);
+    connect(ui.toolButtonAppendIntrctLabl, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::appendInteractiveLabel);
+    connect(ui.toolButtonErase, &QToolButton::clicked,
+        ui.graphicsViewIntrctLbls, &MontageGraphicsView::clearIntrctPath);
+    
+    connect(ui.verticalSliderStrokeWidth, &QSlider::valueChanged,
+        this, &InteractiveDigitalMontage::updateStrokeWidth);
 
     connect(ui.toolButtonRunLblMatch, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::runLabelMatching);
