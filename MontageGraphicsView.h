@@ -12,7 +12,6 @@ private:
     QGraphicsLineItem* crossLine[2] = { nullptr, nullptr };
     QGraphicsPixmapItem* backGround = nullptr;
     QGraphicsPixmapItem* foreGround = nullptr;
-    const QVector<QColor>* srcImgLblCols = nullptr;
 private:
     void adjustCam();
 public:
@@ -20,7 +19,7 @@ public:
 public:
     void loadBackgroudImage(const QImage& img);
     void clearBackgroundImage();
-    void loadForegroundImage(const QImage& img, const QColor& col);
+    void loadForegroundImage(const QImage& img);
     void clearForegroundImage();
 protected:
     void dragMoveEvent(QDragMoveEvent* event) override;

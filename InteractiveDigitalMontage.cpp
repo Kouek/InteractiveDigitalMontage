@@ -21,7 +21,7 @@ static void lineEditSetText(QLineEdit* lnEdt, const QString& txt, const QColor& 
 //   If <isClear> is TRUE, set <txt> to <txtEdt>
 //   Else append <txt> at the new line of <txtEdt>
 //   <txtEdt> should NOT be NULL
-static void textEditSetText(QTextEdit* txtEdt, const QString& txt, const QColor& col, bool isClear)
+static void textEditSetText(QTextEdit* txtEdt, const QString& txt, const QColor& bkCol, bool isClear)
 {
     if (isClear)
         txtEdt->clear();
@@ -31,17 +31,65 @@ static void textEditSetText(QTextEdit* txtEdt, const QString& txt, const QColor&
     QTextCursor cursor = txtEdt->textCursor();
     cursor.select(QTextCursor::LineUnderCursor);
     QTextCharFormat fmt;
-    fmt.setForeground(col);
-    fmt.setBackground(
+    fmt.setBackground(bkCol);
+    fmt.setForeground(
         QColor(
-            255 - col.red(),
-            255 - col.green(),
-            255 - col.blue()
+            255 - bkCol.red(),
+            255 - bkCol.green(),
+            255 - bkCol.blue()
         )
     );
     cursor.mergeCharFormat(fmt);
     cursor.clearSelection();
     cursor.movePosition(QTextCursor::EndOfLine);
+}
+
+// Usage:
+//   Convert black pixels to transparent
+//   Convert non-black pixels to color <col>
+static QImage convertLabelColor(const QImage& label, const QColor& col)
+{
+    QImage alphaLbl = label.convertToFormat(QImage::Format::Format_ARGB32);
+    union rgba
+    {
+        uint rgba32;
+        uchar rgba8[4];
+    };
+    rgba* bits = (rgba*)alphaLbl.bits();
+    static rgba testBLEndian = { 0xffff0000 };
+
+    int len = alphaLbl.width() * alphaLbl.height();
+    if (testBLEndian.rgba8[0] == 0xff) // big endian
+        while (len > 0)
+        {
+            if (bits->rgba32 == 0xff000000)
+                bits->rgba8[0] = 0;
+            else
+            {
+                bits->rgba8[0] = 255;
+                bits->rgba8[1] = col.red();
+                bits->rgba8[2] = col.green();
+                bits->rgba8[3] = col.blue();
+            }
+            bits++;
+            len--;
+        }
+    else // little endian
+        while (len > 0)
+        {
+            if (bits->rgba32 == 0xff000000)
+                bits->rgba8[3] = 0;
+            else
+            {
+                bits->rgba8[3] = 255;
+                bits->rgba8[2] = col.red();
+                bits->rgba8[1] = col.green();
+                bits->rgba8[0] = col.blue();
+            }
+            bits++;
+            len--;
+        }
+    return alphaLbl;
 }
 
 // Usage:
@@ -69,8 +117,7 @@ void InteractiveDigitalMontage::changeCurrSrcIdxTo(int newIdx)
             srcImgs[currSrcIdx]
         );
         ui.graphicsViewIntrctLbls->loadForegroundImage(
-            intrctLbls[currSrcIdx],
-            srcImgLblCols[currSrcIdx]
+            convertLabelColor(intrctLbls[currSrcIdx], srcImgLblCols[currSrcIdx])
         );
         lineEditSetText(ui.lineEditIntrctLbls, srcImgNames[currSrcIdx], Qt::GlobalColor::black);
     }
@@ -258,19 +305,27 @@ void InteractiveDigitalMontage::runLabelMatching()
     switch (state)
     {
     case MainState::Initialized:
+        textEditSetText(
+            ui.textEditLblMatchReslts, "Load Source Image First",
+            Qt::GlobalColor::red, false
+        );
+        return;
     case MainState::Labeling:
+        textEditSetText(
+            ui.textEditLblMatchReslts, "A Thread is Running Now, Plz Wait",
+            Qt::GlobalColor::red, false
+        );
         return;
     default:
         // enetr Labeling state
         // to avoid duplicate calls of this func
+        textEditSetText(
+            ui.textEditLblMatchReslts, "Start Label Matching",
+            Qt::GlobalColor::green, false
+        );
         this->state = MainState::Labeling;
         break;
     }
-    
-    textEditSetText(
-        ui.textEditLblMatchReslts, "Start Label Matching",
-        Qt::GlobalColor::green, false
-    );
 
     // run label matching in another thread
     MontageLabelMatchWorker* worker =
@@ -286,10 +341,21 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
 {
     textEditSetText(
         ui.textEditLblMatchReslts, result.msg,
-        Qt::GlobalColor::white, false
+        Qt::GlobalColor::black, false
     );
     LMRslts[0] = result.label;
     LMRslts[1] = result.image;
+    
+    LMRslts[2] = result.label;
+    QPainter painter;
+    painter.begin(&LMRslts[2]);
+    // set alpha of label
+    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_DestinationIn);
+    painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 200));
+    // draw image on label
+    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
+    painter.drawImage(0, 0, result.image);
+    painter.end();
     
     currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
@@ -298,9 +364,8 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
 
 void InteractiveDigitalMontage::switchLblMatchRslts()
 {
-    if (currLMRsltIdx == 0)
-        currLMRsltIdx = 1;
-    else
+    currLMRsltIdx++;
+    if (currLMRsltIdx == 3)
         currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
 }

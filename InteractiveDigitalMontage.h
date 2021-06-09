@@ -35,7 +35,7 @@ private:
     int currSrcIdx = -1;
     void changeCurrSrcIdxTo(int newIdx); 
 
-    QImage LMRslts[2];
+    QImage LMRslts[3];
     int currLMRsltIdx = 0;
 public:
     void goToPreviousImage();

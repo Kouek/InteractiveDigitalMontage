@@ -37,52 +37,9 @@ void MontageGraphicsView::clearBackgroundImage()
 	backGround->setPixmap(QPixmap()); // clear
 }
 
-void MontageGraphicsView::loadForegroundImage(const QImage& img, const QColor& col)
+void MontageGraphicsView::loadForegroundImage(const QImage& img)
 {
-	// convert black pixiels to transparent
-	QImage alphaImg = img.convertToFormat(QImage::Format::Format_ARGB32);
-	union rgba
-	{
-		uint rgba32;
-		uchar rgba8[4];
-	};
-	rgba* bits = (rgba*)alphaImg.bits();
-	static rgba testBLEndian = { 0xffff0000 };
-	
-	int len = alphaImg.width() * alphaImg.height();
-	const QVector<QColor>& imgCols = *srcImgLblCols;
-	if (testBLEndian.rgba8[0] == 0xff) // big endian
-		while (len > 0)
-		{
-			if (bits->rgba32 == 0xff000000)
-				bits->rgba8[0] = 0;
-			else
-			{
-				bits->rgba8[0] = 255;
-				bits->rgba8[1] = col.red();
-				bits->rgba8[2] = col.green();
-				bits->rgba8[3] = col.blue();
-			}
-			bits++;
-			len--;
-		}
-	else // little endian
-		while (len > 0)
-		{
-			if (bits->rgba32 == 0xff000000)
-				bits->rgba8[3] = 0;
-			else
-			{
-				bits->rgba8[3] = 255;
-				bits->rgba8[2] = col.red();
-				bits->rgba8[1] = col.green();
-				bits->rgba8[0] = col.blue();
-			}
-			bits++;
-			len--;
-		}
-
-	foreGround->setPixmap(QPixmap::fromImage(alphaImg));
+	foreGround->setPixmap(QPixmap::fromImage(img));
 }
 
 void MontageGraphicsView::clearForegroundImage()

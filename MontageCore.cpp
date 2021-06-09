@@ -81,8 +81,11 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	int yq = q / width;
 	int xq = q % width;
 
-	double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
-	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));
+
+	double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yp, xp));
+	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yq, xq));
+	/*double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
+	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));*/
 	assert(X_term1 + X_term1 >= 0.0);
 	return (X_term1 + X_term2) * 100;
 #endif
