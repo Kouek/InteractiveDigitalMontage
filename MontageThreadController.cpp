@@ -9,7 +9,6 @@
 static cv::Mat qImage2CvMat(const QImage& image)
 {
 	cv::Mat mat;
-	qDebug() << image.format();
 	switch (image.format())
 	{
 	case QImage::Format_ARGB32:
@@ -97,7 +96,8 @@ void MontageLabelMatchWorker::run()
 	MontageLabelMatchResult rslt = {
 		QString::fromStdString(stdMsg),
 		cvMat2QImage(rsltLbl),
-		cvMat2QImage(rsltImg)
+		cvMat2QImage(rsltImg),
+		this->colLabel
 	};
 	emit resultReady(rslt);
 }
@@ -124,6 +124,11 @@ MontageLabelMatchWorker::MontageLabelMatchWorker(
 		CV_8SC1
 	);
 	label.setTo(MontageCore::undefined);
+
+	// init colLabel
+	colLabel = QImage(width, height, QImage::Format::Format_ARGB32);
+	colLabel.fill(QColor(0, 0, 0, 0));
+
 	int srcImgIdx = 0;
 	for (auto lbl : labels)
 	{
@@ -135,7 +140,10 @@ MontageLabelMatchWorker::MontageLabelMatchWorker(
 			for (int y = 0; y < height; y++)
 				for (int x = 0; x < width; x++)
 					if (lbl.pixelColor(x, y) != Qt::GlobalColor::black)
+					{
 						this->label.at<uchar>(y, x) = srcImgIdx;
+						this->colLabel.setPixelColor(x, y, imageColors[srcImgIdx]);
+					}
 
 			break;
 		}

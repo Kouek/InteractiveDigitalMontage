@@ -13,8 +13,9 @@ class MontageLabelMatchResult
 {
 public:
     QString msg;
-    QImage label;
+    QImage expndLbl;
     QImage image;
+    QImage colLbl;
 };
 
 class MontageLabelMatchWorker:
@@ -25,6 +26,9 @@ private:
     std::vector<cv::Mat> images;
     cv::Mat label;
     std::vector<cv::Vec3b> imageColors;
+    // The colored label buffered for current Labeling process.
+    // We need this since designatedLbls may change during Labeling.
+    QImage colLabel;
 public:
     void run() override;
     MontageLabelMatchWorker(

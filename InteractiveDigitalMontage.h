@@ -35,8 +35,14 @@ private:
     int currSrcIdx = -1;
     void changeCurrSrcIdxTo(int newIdx); 
 
-    QImage LMRslts[3];
+    static const int LMRsltNum = 4;
     int currLMRsltIdx = 0;
+    // In LMRslts:
+    // 0 stores expanded colored label
+    // 1 stores composite image
+    // 2 stores 1 + 2
+    // 3 stores 2 + colored label
+    QImage LMRslts[LMRsltNum];    
 public:
     void goToPreviousImage();
     void goToNextImage();

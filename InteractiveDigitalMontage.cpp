@@ -118,10 +118,12 @@ void InteractiveDigitalMontage::changeCurrSrcIdxTo(int newIdx)
         ui.graphicsViewIntrctLbls->loadBackgroudImage(
             srcImgs[currSrcIdx]
         );
+        ui.graphicsViewIntrctLbls->clearForegroundImage();
         if (!designatedLbls[currSrcIdx].isNull())
             ui.graphicsViewIntrctLbls->loadForegroundImage(
                 convertLabelColor(designatedLbls[currSrcIdx], srcImgLblCols[currSrcIdx])
             );
+
         ui.graphicsViewIntrctLbls->clearIntrctPath();
         ui.graphicsViewIntrctLbls->configIntrctPath(
             true,
@@ -253,9 +255,6 @@ void InteractiveDigitalMontage::appendLoadedLabels()
         onlyNames.push_back(fn.mid(left, right - left));
     }
 
-    // reset designatedLbls
-    clearDesignatedLabels();
-
     for (auto fn : appendFileNames)
     {
         int left = fn.lastIndexOf(QDir::separator()) + 1;
@@ -264,7 +263,6 @@ void InteractiveDigitalMontage::appendLoadedLabels()
         int srcImgIdx = onlyNames.indexOf(fn.mid(left, right - left));
         if (srcImgIdx == -1)
         {
-            clearDesignatedLabels();
             QString msg = tr("Inconsistent Label Name, Caused by: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls , msg, Qt::GlobalColor::red);
@@ -275,7 +273,6 @@ void InteractiveDigitalMontage::appendLoadedLabels()
         img.convertTo(QImage::Format::Format_RGB888); // necessary for further painting
         if (img.isNull())
         {
-            clearDesignatedLabels();
             QString msg = tr("Invalid Label File: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
@@ -284,13 +281,14 @@ void InteractiveDigitalMontage::appendLoadedLabels()
         if (img.width() != imgW
             || img.height() != imgH)
         {
-            clearDesignatedLabels();
             QString msg = tr("Inconsistent Label Size, Caused by: ");
             msg += fn;
             lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
             return;
         }
 
+        if (srcImgIdx >= designatedLbls.size())
+            designatedLbls.resize(srcImgIdx + 1);
         designatedLbls[srcImgIdx] = img;
     }
 
@@ -300,6 +298,13 @@ void InteractiveDigitalMontage::appendLoadedLabels()
 
 void InteractiveDigitalMontage::appendInteractiveLabel()
 {
+    if (state == MainState::Initialized)
+    {
+        QString msg = tr("Load Source Images First");
+        lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
+        return;
+    }
+
     QPainterPath intrctPath = ui.graphicsViewIntrctLbls->getIntrctPath();
     
     if (designatedLbls[currSrcIdx].isNull())
@@ -325,6 +330,8 @@ void InteractiveDigitalMontage::appendInteractiveLabel()
 
     // redisplay
     changeCurrSrcIdxTo(currSrcIdx);
+
+    state = MainState::SourceImageLoaded;
 }
 
 void InteractiveDigitalMontage::clearDesignatedLabels()
@@ -377,9 +384,13 @@ void InteractiveDigitalMontage::runLabelMatching()
         break;
     }
 
-    // run label matching in another thread
     MontageLabelMatchWorker* worker =
         new MontageLabelMatchWorker(srcImgs, designatedLbls, srcImgLblCols);
+
+    // buffer colored label
+
+
+    // run label matching in another thread
     connect(worker, &MontageLabelMatchWorker::resultReady,
         this, &InteractiveDigitalMontage::handleLblMatchRslt);
     connect(worker, &MontageLabelMatchWorker::finished,
@@ -393,22 +404,27 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
         ui.textEditLblMatchReslts, result.msg,
         Qt::GlobalColor::black, false
     );
-    LMRslts[0] = result.label;
+    LMRslts[0] = result.expndLbl;
     LMRslts[1] = result.image;
     
-    LMRslts[2] = result.label;
-    qDebug() << "bf" << LMRslts[2].format();
+    LMRslts[2] = result.expndLbl;
     QPainter painter;
     painter.begin(&LMRslts[2]);
-    // set alpha of label
+    // set alpha of expanded colored label
     painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_DestinationIn);
-    painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 200));
+    painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 150));
     // draw image on label
     painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
     painter.drawImage(0, 0, result.image);
     painter.end();
-    qDebug() << "af" << LMRslts[2].format();
-    
+
+    LMRslts[3] = LMRslts[2];
+    painter.begin(&LMRslts[3]);
+    // draw colored label on previously producted image
+    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_SourceOver);
+    painter.drawImage(0, 0, result.colLbl);
+    painter.end();
+
     currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
     this->state = MainState::Labeled;
@@ -417,7 +433,7 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
 void InteractiveDigitalMontage::switchLblMatchRslts()
 {
     currLMRsltIdx++;
-    if (currLMRsltIdx == 3)
+    if (currLMRsltIdx == LMRsltNum)
         currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
 }

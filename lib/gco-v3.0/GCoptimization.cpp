@@ -77,7 +77,7 @@ void slist_prepend(T*& head, T* val)
 void GCException::Report() 
 {
 	printf("\n%s\n",message);
-	exit(0);
+	//exit(0);
 }
 
 

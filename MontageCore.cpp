@@ -5,6 +5,8 @@
 
 #include <sstream>
 
+#include <QDebug>
+
 using namespace cv;
 
 
@@ -14,13 +16,13 @@ Mat _data;
 struct __ExtraData
 {
 	std::vector<cv::Mat> Images;
+	std::vector<cv::Mat> GrayImages;
 	cv::Mat Label;
 	cv::flann::Index* kdtree;
 };
 
-double dataFn(int p, int l, void* data)
+GCoptimization::EnergyType dataFn(int p, int l, void* data)
 {
-#if 1
 	__ExtraData* ptr_extra_data = (__ExtraData*)data;
 	cv::Mat& Label = ptr_extra_data->Label;
 	//cv::flann::Index * ptr_kdtree = ptr_extra_data->kdtree;
@@ -47,20 +49,48 @@ double dataFn(int p, int l, void* data)
 	{
 		return large_penalty;
 	}
-#endif
-
-	///请同学们填写这里的代码，这里就是实验中所说的数据项
 }
 
-double euc_dist(const Vec3b& a, const Vec3b& b)
+GCoptimization::EnergyType euc_dist(const Vec3b& a, const Vec3b& b)
 {
 	Vec3d double_diff = a - b;
 	return sqrt(double_diff[0] * double_diff[0] + double_diff[1] * double_diff[1] + double_diff[2] * double_diff[2]);
 }
 
+cv::Vec2d sobel_gradient(const cv::Mat& grayImg, int x, int y)
+{
+	double ex = 0, ey = 0;
+	if (x != 0 && x != grayImg.cols - 1
+		&& y != 0 && y != grayImg.rows - 1)
+	{
+		// y direction
+		ey -= grayImg.at<uchar>(y - 1, x - 1) +
+			2.0 * grayImg.at<uchar>(y - 1, x) +
+			grayImg.at<uchar>(y - 1, x + 1);
+		ey += grayImg.at<uchar>(y + 1, x - 1) +
+			2.0 * grayImg.at<uchar>(y + 1, x) +
+			grayImg.at<uchar>(y + 1, x + 1);
+		// x direction
+		ex -= grayImg.at<uchar>(y - 1, x - 1) +
+			2.0 * grayImg.at<uchar>(y, x - 1) +
+			grayImg.at<uchar>(y + 1, x - 1);
+		ex += grayImg.at<uchar>(y - 1, x + 1) +
+			2.0 * grayImg.at<uchar>(y, x + 1) +
+			grayImg.at<uchar>(y + 1, x + 1);
+	}
+	return cv::Vec2d(ex, ey);
+}
+
+double edge_potential(const cv::Mat& grayImg, int xp, int yp, int xq, int yq)
+{
+	Vec2d e0 = sobel_gradient(grayImg, xp, yp);
+	Vec2d e1 = sobel_gradient(grayImg, xq, yq);
+	e1 = e1 - e0;
+	return sqrt(e1[0] * e1[0] + e1[1] * e1[1]);
+}
+
 double smoothFn(int p, int q, int lp, int lq, void* data)
 {
-#if 1
 	if (lp == lq)
 	{
 		return 0.0;
@@ -70,6 +100,7 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	__ExtraData* ptr_extra_data = (__ExtraData*)data;
 	cv::Mat& Label = ptr_extra_data->Label;
 	std::vector<cv::Mat>& Images = ptr_extra_data->Images;
+	std::vector<cv::Mat>& GrayImages = ptr_extra_data->GrayImages;
 	int n_label = Images.size();
 	assert(lp < n_label&& lq < n_label);
 
@@ -81,18 +112,21 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	int yq = q / width;
 	int xq = q % width;
 
-
 	double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yp, xp));
 	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yq, xq));
-	/*double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
-	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));*/
+	//double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
+	//double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));
 	assert(X_term1 + X_term1 >= 0.0);
-	return (X_term1 + X_term2) * 500;
-#endif
 
-	///请同学们填写这里的代码，这里就是实验中所说的平滑项 
-	//return 1.0;
+	return (X_term1 + X_term2) * 100;
 
+	double Z_term1 = edge_potential(GrayImages[lp], xp, yp, xq, yq);
+	double Z_term2 = edge_potential(GrayImages[lq], xp, yp, xq, yq);
+
+	double ret = (X_term1 + X_term2) / 255.0 / (Z_term1 + Z_term2);
+	if (ret > GCO_MAX_ENERGYTERM)
+		ret = GCO_MAX_ENERGYTERM;
+	return ret;
 }
 
 
@@ -135,9 +169,11 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 	const int n_imgs = Images.size();
 	__ExtraData extra_data;
 	extra_data.Images.resize(n_imgs);
+	extra_data.GrayImages.resize(n_imgs);
 	for (int i = 0; i < n_imgs; i++)
 	{
 		extra_data.Images[i] = Images[i];
+		cvtColor(Images[i], extra_data.GrayImages[i], CV_RGB2GRAY);
 	}
 	extra_data.Label = Label;
 	//extra_data.kdtree = AddInertiaConstraint( Label );
@@ -145,13 +181,9 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 	int height = Label.rows;
 	int n_label = n_imgs;
 
-
+	GCoptimizationGridGraph* gc = new GCoptimizationGridGraph(width, height, n_imgs);
 	try
 	{
-		//VisResultLabelMap(Label,n_label);
-
-		GCoptimizationGridGraph* gc = new GCoptimizationGridGraph(width, height, n_imgs);
-
 		// set up the needed data to pass to function for the data costs
 		gc->setDataCost(&dataFn, &extra_data);
 
@@ -164,7 +196,8 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		);
 
 		printf("\nBefore optimization energy is %f", gc->compute_energy());
-		gc->swap(10);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
+		//gc->swap(n_label * 2);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
+		gc->expansion(2);
 		printf("\nAfter optimization energy is %f", gc->compute_energy());
 
 		prnt = "After optimization energy is ";
@@ -193,6 +226,8 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 	catch (GCException e)
 	{
 		e.Report();
+		TryAppendLMResultMsg(e.message);
+		delete gc;
 	}
 }
 
