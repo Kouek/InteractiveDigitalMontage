@@ -51,6 +51,7 @@ public:
 
     void appendLoadedLabels();
     void appendInteractiveLabel();
+    void eraseInteractiveLabel();
     void clearDesignatedLabels();
     void clearCurrentLabel();
     void updateStrokeWidth();

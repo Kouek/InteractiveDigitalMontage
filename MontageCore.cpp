@@ -10,13 +10,17 @@
 using namespace cv;
 
 
-const double large_penalty = 1000.0;
+static double large_penalty = 1e8;
+static double smooth_alpha = 100.0;
+static MontageCore::SmoothTermType smooth_type = MontageCore::SmoothTermType::X;
+
 Mat _data;
 
 struct __ExtraData
 {
 	std::vector<cv::Mat> Images;
-	std::vector<cv::Mat> GrayImages;
+	std::vector<cv::Mat> XGrads[3];
+	std::vector<cv::Mat> YGrads[3];
 	cv::Mat Label;
 	cv::flann::Index* kdtree;
 };
@@ -37,18 +41,12 @@ GCoptimization::EnergyType dataFn(int p, int l, void* data)
 	if (Label.at<char>(y, x) != MontageCore::undefined)	// user specified
 	{
 		if (Label.at<char>(y, x) == l)
-		{
 			return 0.0;
-		}
 		else
-		{
 			return large_penalty;
-		}
 	}
 	else
-	{
 		return large_penalty;
-	}
 }
 
 GCoptimization::EnergyType euc_dist(const Vec3b& a, const Vec3b& b)
@@ -57,36 +55,14 @@ GCoptimization::EnergyType euc_dist(const Vec3b& a, const Vec3b& b)
 	return sqrt(double_diff[0] * double_diff[0] + double_diff[1] * double_diff[1] + double_diff[2] * double_diff[2]);
 }
 
-cv::Vec2d sobel_gradient(const cv::Mat& grayImg, int x, int y)
+GCoptimization::EnergyType edge_potential(int x, int y,
+	const cv::Mat& rGrad, const cv::Mat& gGrad, const cv::Mat& bGrad)
 {
-	double ex = 0, ey = 0;
-	if (x != 0 && x != grayImg.cols - 1
-		&& y != 0 && y != grayImg.rows - 1)
-	{
-		// y direction
-		ey -= grayImg.at<uchar>(y - 1, x - 1) +
-			2.0 * grayImg.at<uchar>(y - 1, x) +
-			grayImg.at<uchar>(y - 1, x + 1);
-		ey += grayImg.at<uchar>(y + 1, x - 1) +
-			2.0 * grayImg.at<uchar>(y + 1, x) +
-			grayImg.at<uchar>(y + 1, x + 1);
-		// x direction
-		ex -= grayImg.at<uchar>(y - 1, x - 1) +
-			2.0 * grayImg.at<uchar>(y, x - 1) +
-			grayImg.at<uchar>(y + 1, x - 1);
-		ex += grayImg.at<uchar>(y - 1, x + 1) +
-			2.0 * grayImg.at<uchar>(y, x + 1) +
-			grayImg.at<uchar>(y + 1, x + 1);
-	}
-	return cv::Vec2d(ex, ey);
-}
-
-double edge_potential(const cv::Mat& grayImg, int xp, int yp, int xq, int yq)
-{
-	Vec2d e0 = sobel_gradient(grayImg, xp, yp);
-	Vec2d e1 = sobel_gradient(grayImg, xq, yq);
-	e1 = e1 - e0;
-	return sqrt(e1[0] * e1[0] + e1[1] * e1[1]);
+	GCoptimization::EnergyType r, g, b;
+	r = rGrad.at<uchar>(y, x);
+	g = gGrad.at<uchar>(y, x);
+	b = bGrad.at<uchar>(y, x);
+	return sqrt(r * r + g * g + b * b);
 }
 
 double smoothFn(int p, int q, int lp, int lq, void* data)
@@ -96,11 +72,11 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 		return 0.0;
 	}
 
-	assert(lp != lq);
 	__ExtraData* ptr_extra_data = (__ExtraData*)data;
 	cv::Mat& Label = ptr_extra_data->Label;
 	std::vector<cv::Mat>& Images = ptr_extra_data->Images;
-	std::vector<cv::Mat>& GrayImages = ptr_extra_data->GrayImages;
+	std::vector<cv::Mat>* XGrads = ptr_extra_data->XGrads;
+	std::vector<cv::Mat>* YGrads = ptr_extra_data->YGrads;
 	int n_label = Images.size();
 	assert(lp < n_label&& lq < n_label);
 
@@ -112,21 +88,35 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	int yq = q / width;
 	int xq = q % width;
 
-	double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yp, xp));
-	double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yq, xq));
-	//double X_term1 = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yq, xq));
-	//double X_term2 = euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yp, xp));
-	assert(X_term1 + X_term1 >= 0.0);
+	double X_term = euc_dist(Images[lp].at<Vec3b>(yp, xp), Images[lq].at<Vec3b>(yp, xp));
+	X_term += euc_dist(Images[lp].at<Vec3b>(yq, xq), Images[lq].at<Vec3b>(yq, xq));
+	X_term *= smooth_alpha;
 
-	return (X_term1 + X_term2) * 100;
+	if (smooth_type == MontageCore::SmoothTermType::X)
+		return X_term;
 
-	double Z_term1 = edge_potential(GrayImages[lp], xp, yp, xq, yq);
-	double Z_term2 = edge_potential(GrayImages[lq], xp, yp, xq, yq);
+	double Z_term = 0.0;
+	if (xp != xq)
+	{
+		// pixel p and q are horizonal neighbors
+		// find whether p-q is on an edge by calc vertical grad
+		int minX = xp < xq ? xp : xq;
+		Z_term = edge_potential(minX, yp, YGrads[0][lp], YGrads[1][lp], YGrads[2][lp]);
+		Z_term += edge_potential(minX, yp, YGrads[0][lq], YGrads[1][lq], YGrads[2][lq]);
+	}
+	else
+	{
+		// pixel p and q are vertical neighbors
+		// find whether p-q is on an edge by calc horizonal grad
+		int minY = yp < yq ? yp : yq;
+		Z_term = edge_potential(xp, minY, XGrads[0][lp], XGrads[1][lp], XGrads[2][lp]);
+		Z_term += edge_potential(xp, minY, XGrads[0][lq], XGrads[1][lq], XGrads[2][lq]);
+	}
+	Z_term = X_term / Z_term;
 
-	double ret = (X_term1 + X_term2) / 255.0 / (Z_term1 + Z_term2);
-	if (ret > GCO_MAX_ENERGYTERM)
-		ret = GCO_MAX_ENERGYTERM;
-	return ret;
+	if (Z_term > large_penalty || Z_term != Z_term)
+		return large_penalty;
+	return Z_term;
 }
 
 
@@ -142,11 +132,17 @@ static void TrySetResultMat(cv::Mat* mat, const cv::Mat& right)
 	(*mat) = right;
 }
 
-void MontageCore::Run(const std::vector<cv::Mat>& Images, const cv::Mat& Label)
+void MontageCore::RunLabel(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
+	double LargePenalty, double SmoothAlpha, SmoothTermType SmoothType)
 {
 	assert(Images[0].rows == Label.rows);
 	assert(Images[0].cols == Label.cols);
 
+	qDebug() << LargePenalty << SmoothAlpha;
+
+	large_penalty = LargePenalty;
+	smooth_alpha = SmoothAlpha;
+	smooth_type = SmoothType;
 	BuildSolveMRF(Images, Label);
 }
 
@@ -169,17 +165,39 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 	const int n_imgs = Images.size();
 	__ExtraData extra_data;
 	extra_data.Images.resize(n_imgs);
-	extra_data.GrayImages.resize(n_imgs);
+	for (int i = 0; i < 3; i++)
+	{
+		extra_data.XGrads[i].resize(n_imgs);
+		extra_data.YGrads[i].resize(n_imgs);
+	}
+	std::vector<cv::Mat> rgbMats(3);
 	for (int i = 0; i < n_imgs; i++)
 	{
 		extra_data.Images[i] = Images[i];
-		cvtColor(Images[i], extra_data.GrayImages[i], CV_RGB2GRAY);
+		
+		cv::split(Images[i], rgbMats);
+
+		assert(rgbMats.size() == 3);
+		for (int c = 0; c < 3; c++)
+		{
+			cv::Sobel(rgbMats[c], extra_data.XGrads[c][i], -1, 1, 0);
+			cv::Sobel(rgbMats[c], extra_data.YGrads[c][i], -1, 0, 1);
+		}
 	}
 	extra_data.Label = Label;
 	//extra_data.kdtree = AddInertiaConstraint( Label );
 	int width = Label.cols;
 	int height = Label.rows;
 	int n_label = n_imgs;
+
+	/*convertScaleAbs(extra_data.YGrads[0][0], extra_data.YGrads[0][0]);
+	imwrite("tempR.png", extra_data.YGrads[0][0]);
+	convertScaleAbs(extra_data.YGrads[1][0], extra_data.YGrads[1][0]);
+	imwrite("tempG.png", extra_data.YGrads[1][0]);
+	convertScaleAbs(extra_data.YGrads[2][0], extra_data.YGrads[2][0]);
+	imwrite("tempB.png", extra_data.YGrads[2][0]);
+	TryAppendLMResultMsg("form: " + std::to_string(extra_data.XGrads[0][0].type()));
+	return;*/
 
 	GCoptimizationGridGraph* gc = new GCoptimizationGridGraph(width, height, n_imgs);
 	try
@@ -196,8 +214,10 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		);
 
 		printf("\nBefore optimization energy is %f", gc->compute_energy());
-		//gc->swap(n_label * 2);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
-		gc->expansion(2);
+		if (smooth_type == MontageCore::SmoothTermType::X_Divide_By_Z)
+			gc->swap(n_label * 2);// run expansion for 2 iterations. For swap use gc->swap(num_iterations);
+		else
+			gc->expansion(2);
 		printf("\nAfter optimization energy is %f", gc->compute_energy());
 
 		prnt = "After optimization energy is ";

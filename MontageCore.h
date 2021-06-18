@@ -4,6 +4,12 @@
 
 class MontageCore
 {
+public:
+	enum class SmoothTermType
+	{
+		X,
+		X_Divide_By_Z
+	};
 private:
 	void BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Mat& Label);
 	void VisResultLabelMap(const cv::Mat& ResultLabel, int n_label);
@@ -21,7 +27,8 @@ private:
 	cv::Mat* LMResultImage = nullptr;
 	const std::vector<cv::Vec3b>* ImageColors = nullptr;;
 public:
-	void Run(const std::vector<cv::Mat>& Images, const cv::Mat& Label);
+	void RunLabel(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
+		double LargePenalty, double SmoothAlpha, SmoothTermType SmoothType);
 	void BindResult(std::string* Result, cv::Mat* LMResultLabel, cv::Mat* LMResultImage);
 	void BindImageColors(const std::vector<cv::Vec3b>* ImageColors);
 private:

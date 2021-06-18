@@ -2,8 +2,6 @@
 
 #include <QDebug>
 
-#include "MontageCore.h"
-
 // Modiified from:
 //   https://blog.csdn.net/liyuanbhu/article/details/46662115
 static cv::Mat qImage2CvMat(const QImage& image)
@@ -91,7 +89,7 @@ void MontageLabelMatchWorker::run()
 	MontageCore mc;
 	mc.BindResult(&stdMsg, &rsltLbl, &rsltImg);
 	mc.BindImageColors(&imageColors);
-	mc.Run(images, label);
+	mc.RunLabel(images, label, largePenalty, smoothAlpha, smoothType);
 	
 	MontageLabelMatchResult rslt = {
 		QString::fromStdString(stdMsg),
@@ -105,7 +103,8 @@ void MontageLabelMatchWorker::run()
 MontageLabelMatchWorker::MontageLabelMatchWorker(
 	const QVector<QImage>& images,
 	const QVector<QImage>& labels,
-	const QVector<QColor>& imageColors
+	const QVector<QColor>& imageColors,
+	double largePenalty, double smoothAlpha, int smoothType
 	)
 {
 	using namespace std;
@@ -161,5 +160,19 @@ MontageLabelMatchWorker::MontageLabelMatchWorker(
 				col.red()
 			)
 		);
+	}
+
+	// init config
+	this->largePenalty = largePenalty;
+	this->smoothAlpha = smoothAlpha;
+	switch (smoothType)
+	{
+	case 0:
+		this->smoothType = MontageCore::SmoothTermType::X;
+		break;
+	case 1:
+	default:
+		this->smoothType = MontageCore::SmoothTermType::X_Divide_By_Z;
+		break;
 	}
 }

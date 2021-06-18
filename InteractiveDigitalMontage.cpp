@@ -165,6 +165,18 @@ void InteractiveDigitalMontage::goToNextImage()
 
 void InteractiveDigitalMontage::appendSourceImages()
 {
+    QString msg;
+    switch (state)
+    {
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        msg = tr("Please Wait for Processing");
+        lineEditSetText(ui.lineEditSrcImgs, msg, Qt::GlobalColor::red);
+        return;
+    default:
+        break;
+    }
+
     QStringList appendFileNames =
         QFileDialog::getOpenFileNames(
             this,
@@ -217,6 +229,18 @@ void InteractiveDigitalMontage::appendSourceImages()
 
 void InteractiveDigitalMontage::clearSourceImages()
 {
+    QString msg;
+    switch (state)
+    {
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        msg = tr("Please Wait for Processing");
+        lineEditSetText(ui.lineEditSrcImgs, msg, Qt::GlobalColor::red);
+        return;
+    default:
+        break;
+    }
+
     srcImgs.clear();
     srcImgNames.clear();
     srcImgLblCols.clear();
@@ -227,11 +251,20 @@ void InteractiveDigitalMontage::clearSourceImages()
 
 void InteractiveDigitalMontage::appendLoadedLabels()
 {
-    if (state == MainState::Initialized)
+    QString msg;
+    switch (state)
     {
-        QString msg = tr("Load Source Images First");
+    case MainState::Initialized:
+        msg = tr("Load Source Images First");
         lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
         return;
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        msg = tr("Please Wait for Processing");
+        lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
+        return;
+    default:
+        break;
     }
 
     QStringList appendFileNames =
@@ -298,11 +331,20 @@ void InteractiveDigitalMontage::appendLoadedLabels()
 
 void InteractiveDigitalMontage::appendInteractiveLabel()
 {
-    if (state == MainState::Initialized)
+    QString msg;
+    switch (state)
     {
-        QString msg = tr("Load Source Images First");
+    case MainState::Initialized:
+        msg = tr("Load Source Images First");
         lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
         return;
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        msg = tr("Please Wait for Processing");
+        lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
+        return;
+    default:
+        break;
     }
 
     QPainterPath intrctPath = ui.graphicsViewIntrctLbls->getIntrctPath();
@@ -318,6 +360,49 @@ void InteractiveDigitalMontage::appendInteractiveLabel()
     QPainter painter;
     QPen pen;
     pen.setColor(Qt::GlobalColor::white); // label is white in designatedLbls
+    pen.setWidth(ui.verticalSliderStrokeWidth->value());
+    painter.begin(&designatedLbls[currSrcIdx]);
+    painter.setPen(pen);
+    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_SourceOver);
+    painter.drawPath(intrctPath);
+    painter.end();
+
+    // clear displayed interactive label
+    ui.graphicsViewIntrctLbls->clearIntrctPath();
+
+    // redisplay
+    changeCurrSrcIdxTo(currSrcIdx);
+
+    state = MainState::SourceImageLoaded;
+}
+
+void InteractiveDigitalMontage::eraseInteractiveLabel()
+{
+    QString msg;
+    switch (state)
+    {
+    case MainState::Initialized:
+        msg = tr("Load Source Images First");
+        lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
+        return;
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        msg = tr("Please Wait for Processing");
+        lineEditSetText(ui.lineEditIntrctLbls, msg, Qt::GlobalColor::red);
+        return;
+    default:
+        break;
+    }
+
+    QPainterPath intrctPath = ui.graphicsViewIntrctLbls->getIntrctPath();
+
+    if (designatedLbls[currSrcIdx].isNull())
+        return; // no need to erase
+
+    // erase interactive labels from designatedLbls[currSrcIdx]
+    QPainter painter;
+    QPen pen;
+    pen.setColor(Qt::GlobalColor::black); // label is drawn black to be erased
     pen.setWidth(ui.verticalSliderStrokeWidth->value());
     painter.begin(&designatedLbls[currSrcIdx]);
     painter.setPen(pen);
@@ -369,7 +454,7 @@ void InteractiveDigitalMontage::runLabelMatching()
         return;
     case MainState::Labeling:
         textEditSetText(
-            ui.textEditLblMatchReslts, "A Thread is Running Now, Plz Wait",
+            ui.textEditLblMatchReslts, "A Thread is Running Now, Please Wait",
             Qt::GlobalColor::red, false
         );
         return;
@@ -385,10 +470,12 @@ void InteractiveDigitalMontage::runLabelMatching()
     }
 
     MontageLabelMatchWorker* worker =
-        new MontageLabelMatchWorker(srcImgs, designatedLbls, srcImgLblCols);
-
-    // buffer colored label
-
+        new MontageLabelMatchWorker(
+            srcImgs, designatedLbls, srcImgLblCols,
+            ui.doubleSpinBoxDatTermLrgPnlty->value(),
+            ui.doubleSpinBoxDatTermAlpha->value(),
+            ui.comboBoxSmoothTermType->currentIndex()
+        );
 
     // run label matching in another thread
     connect(worker, &MontageLabelMatchWorker::resultReady,
@@ -408,22 +495,26 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
     LMRslts[1] = result.image;
     
     LMRslts[2] = result.expndLbl;
-    QPainter painter;
-    painter.begin(&LMRslts[2]);
-    // set alpha of expanded colored label
-    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_DestinationIn);
-    painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 150));
-    // draw image on label
-    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
-    painter.drawImage(0, 0, result.image);
-    painter.end();
 
-    LMRslts[3] = LMRslts[2];
-    painter.begin(&LMRslts[3]);
-    // draw colored label on previously producted image
-    painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_SourceOver);
-    painter.drawImage(0, 0, result.colLbl);
-    painter.end();
+    if (!LMRslts[2].isNull())
+    {
+        QPainter painter;
+        painter.begin(&LMRslts[2]);
+        // set alpha of expanded colored label
+        painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_DestinationIn);
+        painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 150));
+        // draw image on label
+        painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
+        painter.drawImage(0, 0, result.image);
+        painter.end();
+
+        LMRslts[3] = LMRslts[2];
+        painter.begin(&LMRslts[3]);
+        // draw colored label on previously producted image
+        painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_SourceOver);
+        painter.drawImage(0, 0, result.colLbl);
+        painter.end();
+    }
 
     currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
@@ -464,7 +555,9 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
         this, &InteractiveDigitalMontage::goToNextImage);
     connect(ui.toolButtonAppendIntrctLabl, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::appendInteractiveLabel);
-    connect(ui.toolButtonErase, &QToolButton::clicked,
+    connect(ui.toolButtonEraseIntrctLabl, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::eraseInteractiveLabel);
+    connect(ui.toolButtonUndo, &QToolButton::clicked,
         ui.graphicsViewIntrctLbls, &MontageGraphicsView::clearIntrctPath);
     
     connect(ui.verticalSliderStrokeWidth, &QSlider::valueChanged,
