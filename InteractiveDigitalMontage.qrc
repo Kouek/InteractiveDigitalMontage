@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="InteractiveDigitalMontage">
+    <file>rsc/Export.png</file>
     <file>rsc/Exchange.png</file>
     <file>rsc/Run.png</file>
     <file>rsc/Delete.png</file>

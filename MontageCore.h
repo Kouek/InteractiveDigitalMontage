@@ -10,6 +10,11 @@ public:
 		X,
 		X_Divide_By_Z
 	};
+	enum class GradientFusionSolverType
+	{
+		My_Solver,
+		Eigen_Solver
+	};
 private:
 	void BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Mat& Label);
 	void VisResultLabelMap(const cv::Mat& ResultLabel, int n_label);
@@ -20,16 +25,16 @@ private:
 
 	void GradientAt(const cv::Mat& Image, int x, int y, cv::Vec3f& grad_x, cv::Vec3f& grad_y);
 
-	std::string* LMResultMsg = nullptr;
-	void TryAppendLMResultMsg(const std::string& str);
+	std::string* ResultMsg = nullptr;
 
-	cv::Mat* LMResultLabel = nullptr;
-	cv::Mat* LMResultImage = nullptr;
+	cv::Mat* ResultLabel = nullptr;
+	cv::Mat* ResultImage = nullptr;
 	const std::vector<cv::Vec3b>* ImageColors = nullptr;;
 public:
-	void RunLabel(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
+	void RunLabelMatch(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
 		double LargePenalty, double SmoothAlpha, SmoothTermType SmoothType);
-	void BindResult(std::string* Result, cv::Mat* LMResultLabel, cv::Mat* LMResultImage);
+	void RunGradientFusion(GradientFusionSolverType SolverType);
+	void BindResult(std::string* ResultMsg, cv::Mat* ResultLabel, cv::Mat* ResultImage);
 	void BindImageColors(const std::vector<cv::Vec3b>* ImageColors);
 private:
 	cv::flann::Index* AddInertiaConstraint(const cv::Mat& Label);

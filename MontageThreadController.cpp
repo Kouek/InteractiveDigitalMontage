@@ -89,7 +89,7 @@ void MontageLabelMatchWorker::run()
 	MontageCore mc;
 	mc.BindResult(&stdMsg, &rsltLbl, &rsltImg);
 	mc.BindImageColors(&imageColors);
-	mc.RunLabel(images, label, largePenalty, smoothAlpha, smoothType);
+	mc.RunLabelMatch(images, label, largePenalty, smoothAlpha, smoothType);
 	
 	MontageLabelMatchResult rslt = {
 		QString::fromStdString(stdMsg),
@@ -173,6 +173,39 @@ MontageLabelMatchWorker::MontageLabelMatchWorker(
 	case 1:
 	default:
 		this->smoothType = MontageCore::SmoothTermType::X_Divide_By_Z;
+		break;
+	}
+}
+
+void MontageGradientFusionWorker::run()
+{
+	using namespace std;
+	using namespace cv;
+
+	string stdMsg;
+	Mat rsltImg;
+	MontageCore mc;
+	mc.BindResult(&stdMsg, nullptr, &rsltImg);
+	mc.RunGradientFusion(solverType);
+	
+	MontageGradientFusionResult rslt =
+	{
+		QString::fromStdString(stdMsg),
+		cvMat2QImage(rsltImg)
+	};
+
+	emit resultReady(rslt);
+}
+
+MontageGradientFusionWorker::MontageGradientFusionWorker(int solverType)
+{
+	switch (solverType)
+	{
+	case 0:
+		this->solverType = MontageCore::GradientFusionSolverType::My_Solver;
+		break;
+	default:
+		this->solverType = MontageCore::GradientFusionSolverType::Eigen_Solver;
 		break;
 	}
 }

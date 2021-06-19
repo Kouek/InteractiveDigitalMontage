@@ -40,9 +40,11 @@ private:
     // In LMRslts:
     // 0 stores expanded colored label
     // 1 stores composite image
-    // 2 stores 1 + 2
+    // 2 stores 0 + 1
     // 3 stores 2 + colored label
-    QImage LMRslts[LMRsltNum];    
+    QImage LMRslts[LMRsltNum];
+
+    QImage GFRslt;
 public:
     void goToPreviousImage();
     void goToNextImage();
@@ -59,6 +61,13 @@ public:
     void runLabelMatching();
     void handleLblMatchRslt(const MontageLabelMatchResult& result);
     void switchLblMatchRslts();
+    void exportLblMatchRslt();
+
+    void runGradientFuse();
+    void handleGradFuseRslt(const MontageGradientFusionResult& result);
+    void exportGradFuseRslt();
+
+    void adjustSpinStepOnSmoothTypeChanged();
 public:
     InteractiveDigitalMontage(QWidget *parent = Q_NULLPTR);
 private:

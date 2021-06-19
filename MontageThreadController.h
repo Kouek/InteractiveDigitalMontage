@@ -15,7 +15,7 @@ class MontageLabelMatchResult
 public:
     QString msg;
     QImage expndLbl;
-    QImage image;
+    QImage img;
     QImage colLbl;
 };
 
@@ -44,4 +44,24 @@ public:
 
 signals:
     void resultReady(const MontageLabelMatchResult& result);
+};
+
+class MontageGradientFusionResult
+{
+public:
+    QString msg;
+    QImage img;
+};
+
+class MontageGradientFusionWorker :
+    public QThread
+{
+    Q_OBJECT
+private:
+    MontageCore::GradientFusionSolverType solverType;
+public:
+    void run() override;
+    MontageGradientFusionWorker(int solverType);
+signals:
+    void resultReady(const MontageGradientFusionResult& result);
 };

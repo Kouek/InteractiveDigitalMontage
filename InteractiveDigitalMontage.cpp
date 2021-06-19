@@ -272,7 +272,7 @@ void InteractiveDigitalMontage::appendLoadedLabels()
             this,
             tr("Append Loaded Labels"),
             QCoreApplication::applicationDirPath(),
-            "Images (*.bmp)"
+            tr("Images (*.bmp)")
         );
     if (appendFileNames.size() == 0)
         return;
@@ -448,13 +448,14 @@ void InteractiveDigitalMontage::runLabelMatching()
     {
     case MainState::Initialized:
         textEditSetText(
-            ui.textEditLblMatchReslts, "Load Source Image First",
+            ui.textEditLblMatchRslts, tr("Load Source Image First"),
             Qt::GlobalColor::red, false
         );
         return;
     case MainState::Labeling:
+    case MainState::GradientFusing:
         textEditSetText(
-            ui.textEditLblMatchReslts, "A Thread is Running Now, Please Wait",
+            ui.textEditLblMatchRslts, tr("A Thread is Running Now, Please Wait"),
             Qt::GlobalColor::red, false
         );
         return;
@@ -462,7 +463,7 @@ void InteractiveDigitalMontage::runLabelMatching()
         // enetr Labeling state
         // to avoid duplicate calls of this func
         textEditSetText(
-            ui.textEditLblMatchReslts, "Start Label Matching",
+            ui.textEditLblMatchRslts, tr("Start Label Matching"),
             Qt::GlobalColor::green, false
         );
         this->state = MainState::Labeling;
@@ -477,22 +478,22 @@ void InteractiveDigitalMontage::runLabelMatching()
             ui.comboBoxSmoothTermType->currentIndex()
         );
 
-    // run label matching in another thread
+    // run label match in another thread
     connect(worker, &MontageLabelMatchWorker::resultReady,
         this, &InteractiveDigitalMontage::handleLblMatchRslt);
     connect(worker, &MontageLabelMatchWorker::finished,
         worker, &QObject::deleteLater);
-    worker->start();
+    worker->start(QThread::TimeCriticalPriority);
 }
 
 void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult& result)
 {
     textEditSetText(
-        ui.textEditLblMatchReslts, result.msg,
+        ui.textEditLblMatchRslts, result.msg,
         Qt::GlobalColor::black, false
     );
     LMRslts[0] = result.expndLbl;
-    LMRslts[1] = result.image;
+    LMRslts[1] = result.img;
     
     LMRslts[2] = result.expndLbl;
 
@@ -505,7 +506,7 @@ void InteractiveDigitalMontage::handleLblMatchRslt(const MontageLabelMatchResult
         painter.fillRect(LMRslts[2].rect(), QColor(0, 0, 0, 150));
         // draw image on label
         painter.setCompositionMode(QPainter::CompositionMode::CompositionMode_Overlay);
-        painter.drawImage(0, 0, result.image);
+        painter.drawImage(0, 0, result.img);
         painter.end();
 
         LMRslts[3] = LMRslts[2];
@@ -527,6 +528,175 @@ void InteractiveDigitalMontage::switchLblMatchRslts()
     if (currLMRsltIdx == LMRsltNum)
         currLMRsltIdx = 0;
     ui.graphicsViewLblMatchRslts->loadBackgroudImage(LMRslts[currLMRsltIdx]);
+}
+
+void InteractiveDigitalMontage::exportLblMatchRslt()
+{
+    switch (state)
+    {
+    case MainState::Labeled:
+    case MainState::GradientFusing:
+    case MainState::GradientFused:
+        break;
+    default:
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Export after 1 Label Match Result has been Generated"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    }
+
+    if (LMRslts[currLMRsltIdx].isNull())
+    {
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("NULL Result Generated during this Label Match Turn"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    }
+
+    QString exportFileName =
+        QFileDialog::getSaveFileName(
+            this,
+            tr("Save Label Match Result"),
+            QCoreApplication::applicationDirPath(),
+            tr("Images (*.png)")
+        );
+    if (exportFileName.isEmpty())return;
+
+    if (!LMRslts[currLMRsltIdx].save(exportFileName))
+    {
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Save Image Failed"),
+            Qt::GlobalColor::red, false
+        );
+    }
+    else
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Save Image Success"),
+            Qt::GlobalColor::green, false
+        );
+}
+
+void InteractiveDigitalMontage::runGradientFuse()
+{
+    switch (state)
+    {
+    case MainState::Initialized:
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Load Source Image First"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    case MainState::SourceImageLoaded:
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Run Label Match First"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    case MainState::Labeling:
+    case MainState::GradientFusing:
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("A Thread is Running Now, Please Wait"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    default:
+        // enetr Labeling state
+        // to avoid duplicate calls of this func
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Start Gradient Fusion"),
+            Qt::GlobalColor::green, false
+        );
+        this->state = MainState::Labeling;
+        break;
+    }
+
+    MontageGradientFusionWorker* worker =
+        new MontageGradientFusionWorker(ui.comboBoxGradFuseSolver->currentIndex());
+
+    // run gradient fusion in another thread
+    connect(worker, &MontageGradientFusionWorker::resultReady,
+        this, &InteractiveDigitalMontage::handleGradFuseRslt);
+    connect(worker, &MontageGradientFusionWorker::finished,
+        worker, &QObject::deleteLater);
+    worker->start(QThread::TimeCriticalPriority);
+}
+
+void InteractiveDigitalMontage::handleGradFuseRslt(const MontageGradientFusionResult& result)
+{
+    textEditSetText(
+        ui.textEditGradFuseRslts, result.msg,
+        Qt::GlobalColor::black, false
+    );
+    GFRslt = result.img;
+    ui.graphicsViewGradFuseRslts->loadBackgroudImage(GFRslt);
+    this->state = MainState::GradientFused;
+}
+
+void InteractiveDigitalMontage::exportGradFuseRslt()
+{
+    switch (state)
+    {
+    case MainState::Labeled:
+    case MainState::GradientFusing:
+    case MainState::GradientFused:
+        break;
+    default:
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Export after 1 Gradient Fusion Result has been Generated"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    }
+
+    if (GFRslt.isNull())
+    {
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("NULL Result Generated during this Gradient Fusion Turn"),
+            Qt::GlobalColor::red, false
+        );
+        return;
+    }
+
+    QString exportFileName =
+        QFileDialog::getSaveFileName(
+            this,
+            tr("Save Gradient Fusion Result"),
+            QCoreApplication::applicationDirPath(),
+            tr("Images (*.png)")
+        );
+    if (exportFileName.isEmpty())return;
+
+    if (!GFRslt.save(exportFileName))
+    {
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Save Image Failed"),
+            Qt::GlobalColor::red, false
+        );
+    }
+    else
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Save Image Success"),
+            Qt::GlobalColor::green, false
+        );
+}
+
+void InteractiveDigitalMontage::adjustSpinStepOnSmoothTypeChanged()
+{
+    switch (ui.comboBoxSmoothTermType->currentIndex())
+    {
+    case 0:
+        ui.doubleSpinBoxDatTermLrgPnlty->setValue(1e8);
+        ui.doubleSpinBoxDatTermAlpha->setValue(1.0);
+        break;
+    case 1:
+        ui.doubleSpinBoxDatTermLrgPnlty->setValue(1000.0);
+        ui.doubleSpinBoxDatTermAlpha->setValue(100.0);
+        break;
+    default:
+        break;
+    }
 }
 
 InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
@@ -559,7 +729,6 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
         this, &InteractiveDigitalMontage::eraseInteractiveLabel);
     connect(ui.toolButtonUndo, &QToolButton::clicked,
         ui.graphicsViewIntrctLbls, &MontageGraphicsView::clearIntrctPath);
-    
     connect(ui.verticalSliderStrokeWidth, &QSlider::valueChanged,
         this, &InteractiveDigitalMontage::updateStrokeWidth);
 
@@ -567,11 +736,24 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
         this, &InteractiveDigitalMontage::runLabelMatching);
     connect(ui.toolButtonSwitchLblMatchRslts, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::switchLblMatchRslts);
-    connect(ui.toolButtonClearTextEditLblMatchReslts, &QToolButton::clicked,
-        ui.textEditLblMatchReslts, &QTextEdit::clear);
+    connect(ui.toolButtonClearTextEditLblMatchRslts, &QToolButton::clicked,
+        ui.textEditLblMatchRslts, &QTextEdit::clear);
+    connect(ui.toolButtonExportLblMatchRslt, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::exportLblMatchRslt);
+
+    connect(ui.toolButtonRunLblGradFuse, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::runGradientFuse);
+    connect(ui.toolButtonClearTextEditGradFuseRslts, &QToolButton::clicked,
+        ui.textEditGradFuseRslts, &QTextEdit::clear);
+    connect(ui.toolButtonExportGradFuseRslt, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::exportGradFuseRslt);
+
+    connect(ui.comboBoxSmoothTermType, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, &InteractiveDigitalMontage::adjustSpinStepOnSmoothTypeChanged);
 
     // maximize window
     setWindowState(Qt::WindowState::WindowMaximized);
     
     qRegisterMetaType<MontageLabelMatchResult>("MontageLabelMatchResult");
+    qRegisterMetaType<MontageGradientFusionResult>("MontageGradientFusionResult");
 }

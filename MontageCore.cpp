@@ -5,14 +5,21 @@
 
 #include <sstream>
 
-#include <QDebug>
-
 using namespace cv;
 
 
 static double large_penalty = 1e8;
 static double smooth_alpha = 100.0;
 static MontageCore::SmoothTermType smooth_type = MontageCore::SmoothTermType::X;
+
+static MontageCore::GradientFusionSolverType solver_type = MontageCore::GradientFusionSolverType::Eigen_Solver;
+
+// buffered images
+// generated from last Label Match
+// to be used in successive Gradient Fusion
+static std::vector<cv::Mat> BufImages;
+// buffered result label
+static cv::Mat BufResultLabel;
 
 Mat _data;
 
@@ -120,10 +127,10 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 }
 
 
-void MontageCore::TryAppendLMResultMsg(const std::string& str)
+void TryAppendResultMsg(std::string* msg, const std::string& str)
 {
-	if (LMResultMsg == nullptr)return;
-	LMResultMsg->append(str + "\n");
+	if (msg == nullptr)return;
+	msg->append(str + "\n");
 }
 
 static void TrySetResultMat(cv::Mat* mat, const cv::Mat& right)
@@ -132,13 +139,11 @@ static void TrySetResultMat(cv::Mat* mat, const cv::Mat& right)
 	(*mat) = right;
 }
 
-void MontageCore::RunLabel(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
+void MontageCore::RunLabelMatch(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
 	double LargePenalty, double SmoothAlpha, SmoothTermType SmoothType)
 {
 	assert(Images[0].rows == Label.rows);
 	assert(Images[0].cols == Label.cols);
-
-	qDebug() << LargePenalty << SmoothAlpha;
 
 	large_penalty = LargePenalty;
 	smooth_alpha = SmoothAlpha;
@@ -146,13 +151,19 @@ void MontageCore::RunLabel(const std::vector<cv::Mat>& Images, const cv::Mat& La
 	BuildSolveMRF(Images, Label);
 }
 
-void MontageCore::BindResult(std::string* LMResultMsg, cv::Mat* LMResultLabel, cv::Mat* LMResultImage)
+void MontageCore::RunGradientFusion(GradientFusionSolverType SolverType)
 {
-	this->LMResultMsg = LMResultMsg;
-	if (this->LMResultMsg != nullptr)
-		this->LMResultMsg->clear();
-	this->LMResultLabel = LMResultLabel;
-	this->LMResultImage = LMResultImage;
+	solver_type = SolverType;
+	BuildSolveGradientFusion(BufImages, BufResultLabel);
+}
+
+void MontageCore::BindResult(std::string* ResultMsg, cv::Mat* ResultLabel, cv::Mat* ResultImage)
+{
+	this->ResultMsg = ResultMsg;
+	if (this->ResultMsg != nullptr)
+		this->ResultMsg->clear();
+	this->ResultLabel = ResultLabel;
+	this->ResultImage = ResultImage;
 }
 
 void MontageCore::BindImageColors(const std::vector<Vec3b>* ImageColors)
@@ -185,7 +196,6 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		}
 	}
 	extra_data.Label = Label;
-	//extra_data.kdtree = AddInertiaConstraint( Label );
 	int width = Label.cols;
 	int height = Label.rows;
 	int n_label = n_imgs;
@@ -209,7 +219,8 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		gc->setSmoothCost(&smoothFn, &extra_data);
 
 		std::string prnt = "Before optimization energy is ";
-		TryAppendLMResultMsg(
+		TryAppendResultMsg(
+			ResultMsg,
 			prnt + std::to_string(gc->compute_energy())
 		);
 
@@ -221,7 +232,8 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		printf("\nAfter optimization energy is %f", gc->compute_energy());
 
 		prnt = "After optimization energy is ";
-		TryAppendLMResultMsg(
+		TryAppendResultMsg(
+			ResultMsg,
 			prnt + std::to_string(gc->compute_energy())
 		);
 
@@ -238,33 +250,32 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 		}
 		delete gc;
 
+		// buffer
+		BufImages = Images;
+		BufResultLabel = result_label;
+
 		VisResultLabelMap(result_label, n_label);
 		VisCompositeImage(result_label, Images);
-
-		//BuildSolveGradientFusion(Images, result_label);;
 	}
 	catch (GCException e)
 	{
 		e.Report();
-		TryAppendLMResultMsg(e.message);
+		TryAppendResultMsg(ResultMsg, e.message);
 		delete gc;
 	}
 }
 
 void MontageCore::GradientAt(const cv::Mat& Image, int x, int y, cv::Vec3f& grad_x, cv::Vec3f& grad_y)
 {
-
 	Vec3i color1 = Image.at<Vec3b>(y, x);
 	Vec3i color2 = Image.at<Vec3b>(y, x + 1);
 	Vec3i color3 = Image.at<Vec3b>(y + 1, x);
 	grad_x = color2 - color1;
 	grad_y = color3 - color1;
-
 }
 
 void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, const cv::Mat& ResultLabel)
 {
-
 	int width = ResultLabel.cols;
 	int height = ResultLabel.rows;
 	Mat color_result(height, width, CV_8UC3);
@@ -285,10 +296,7 @@ void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, c
 	SolveChannel(1, color0[1], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(2, color0[2], color_gradient_x, color_gradient_y, color_result);
 
-
-	/*imshow("color result", color_result);
-	waitKey(0);*/
-
+	TrySetResultMat(this->ResultImage, color_result);
 }
 
 void MontageCore::VisResultLabelMap(const cv::Mat& ResultLabel, int n_label)
@@ -304,12 +312,6 @@ void MontageCore::VisResultLabelMap(const cv::Mat& ResultLabel, int n_label)
 		}
 	else
 		label_colors = *ImageColors;
-	//label_colors.push_back(Vec3b(255,0,0));
-	//label_colors.push_back(Vec3b(0,255,0));
-	//label_colors.push_back(Vec3b(0,0,255));
-	//label_colors.push_back(Vec3b(255,255,0));
-	//label_colors.push_back(Vec3b(0,255,255));
-
 
 	for (int y = 0; y < height; y++)
 	{
@@ -319,9 +321,7 @@ void MontageCore::VisResultLabelMap(const cv::Mat& ResultLabel, int n_label)
 		}
 	}
 
-	TrySetResultMat(LMResultLabel, color_result_map);
-	/*imshow("result labels", color_result_map);
-	waitKey(27);*/
+	TrySetResultMat(this->ResultLabel, color_result_map);
 }
 
 void MontageCore::VisCompositeImage(const cv::Mat& ResultLabel, const std::vector<cv::Mat>& Images)
@@ -338,9 +338,7 @@ void MontageCore::VisCompositeImage(const cv::Mat& ResultLabel, const std::vecto
 		}
 	}
 
-	TrySetResultMat(LMResultImage, composite_image);
-	/*imshow("composite image", composite_image);
-	waitKey(27);*/
+	TrySetResultMat(this->ResultImage, composite_image);
 }
 
 cv::flann::Index* MontageCore::AddInertiaConstraint(const cv::Mat& Label)
@@ -367,21 +365,12 @@ cv::flann::Index* MontageCore::AddInertiaConstraint(const cv::Mat& Label)
 	}
 	cv::flann::KDTreeIndexParams indexParams;
 	return new cv::flann::Index(_data, indexParams);
-
-	//std::vector<int> indices(1); 
-	//std::vector<float> dists(1); 
-	//Mat query(1,2,CV_32FC1);
-	//query.at<float>(0,0) = 522;
-	//query.at<float>(0,1) = 57;
-	//kdtree->knnSearch(query, indices, dists, 1,cv::flann::SearchParams(64)); 
 }
 
 void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& color_gradient_x, const cv::Mat& color_gradient_y, cv::Mat& output)
 {
-#if 1
 	int width = color_gradient_x.cols;
 	int height = color_gradient_x.rows;
-
 
 	int NumOfUnknownTerm = 2 * width * height + 1;
 	std::vector<Eigen::Triplet<double>> NonZeroTerms;
@@ -410,13 +399,10 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 		}
 	}
 
-
 	///constraint
 	int eq_idx = width * height * 2;
 	NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx, 0, 1));
 	b(eq_idx) = constraint;
-
-
 
 	Eigen::SparseMatrix<double> A(NumOfUnknownTerm, width * height);
 	A.setFromTriplets(NonZeroTerms.begin(), NonZeroTerms.end());
@@ -429,6 +415,13 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 	printf("\nSolving...\n");
 	Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> CGSolver(ATA);
 	Eigen::VectorXd solution = CGSolver.solve(ATb);
+
+	Eigen::VectorXd solvAX = A * solution;
+	TryAppendResultMsg(
+		ResultMsg,
+		"Constraint of channel " + std::to_string(channel_idx) + " is: " + std::to_string(constraint)
+		+ ", and the solved one is: " + std::to_string(solvAX(eq_idx))
+	);
 	printf("Solved!\n");
 
 	for (int y = 0; y < height; y++)
@@ -441,10 +434,4 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 			//system("pause");
 		}
 	}
-
-	//imshow("output",output);
-	//waitKey(0);
-#endif
-
-	///请同学们填写这里的代码，这里就是实验中所说的单颜色通道的Gradient Fusion
 }
