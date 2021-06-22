@@ -56,6 +56,7 @@ public:
     void eraseInteractiveLabel();
     void clearDesignatedLabels();
     void clearCurrentLabel();
+    void exportDesignatedLabels();
     void updateStrokeWidth();
 
     void runLabelMatching();

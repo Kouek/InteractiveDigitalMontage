@@ -281,7 +281,7 @@ void InteractiveDigitalMontage::appendLoadedLabels()
     onlyNames.reserve(srcImgs.size());
     for (auto fn : srcImgNames)
     {
-        int left = fn.lastIndexOf(QDir::separator()) + 1;
+        int left = fn.lastIndexOf(QChar('/')) + 1;
         int right = fn.lastIndexOf(QChar('.'));
         // no need to sort onlyNames here
         // since srcImgNames has been sorted
@@ -290,7 +290,7 @@ void InteractiveDigitalMontage::appendLoadedLabels()
 
     for (auto fn : appendFileNames)
     {
-        int left = fn.lastIndexOf(QDir::separator()) + 1;
+        int left = fn.lastIndexOf(QChar('/')) + 1;
         int right = fn.lastIndexOf(QChar('.'));
 
         int srcImgIdx = onlyNames.indexOf(fn.mid(left, right - left));
@@ -431,6 +431,51 @@ void InteractiveDigitalMontage::clearCurrentLabel()
     designatedLbls[currSrcIdx] = QImage(); // set NULL
     ui.graphicsViewIntrctLbls->clearForegroundImage();
     ui.graphicsViewIntrctLbls->clearIntrctPath();
+}
+
+void InteractiveDigitalMontage::exportDesignatedLabels()
+{
+    QString exportFolderName =
+        QFileDialog::getExistingDirectory(
+            this,
+            tr("Save Designated Labels to Directory"),
+            QCoreApplication::applicationDirPath(),
+            QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks
+        );
+    if (exportFolderName.isEmpty())return;
+
+    int idx = 0;
+    for (auto lbl : designatedLbls)
+    {
+        if (lbl.isNull()) 
+        { 
+            idx++;
+            continue; 
+        }
+
+        const QString& fn = srcImgNames[idx];
+        int left = fn.lastIndexOf(QChar('/')) + 1;
+        int right = fn.lastIndexOf(QChar('.'));
+
+        bool rslt = lbl.save(
+            exportFolderName
+            + QChar('/')
+            + fn.mid(left, right - left)
+            + ".bmp"
+        );
+        if (!rslt)
+            lineEditSetText(
+                ui.lineEditIntrctLbls, tr("Save Labels Failed"),
+                Qt::GlobalColor::red
+            );
+        else
+            lineEditSetText(
+                ui.lineEditIntrctLbls, tr("Save Labels Success"),
+                Qt::GlobalColor::black
+            );
+        
+        idx++;
+    }
 }
 
 void InteractiveDigitalMontage::updateStrokeWidth()
@@ -723,10 +768,12 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
         this, &InteractiveDigitalMontage::goToPreviousImage);
     connect(ui.toolButtonNextImg2, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::goToNextImage);
-    connect(ui.toolButtonAppendIntrctLabl, &QToolButton::clicked,
+    connect(ui.toolButtonAppendIntrctLbl, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::appendInteractiveLabel);
-    connect(ui.toolButtonEraseIntrctLabl, &QToolButton::clicked,
+    connect(ui.toolButtonEraseIntrctLbl, &QToolButton::clicked,
         this, &InteractiveDigitalMontage::eraseInteractiveLabel);
+    connect(ui.toolButtonExportLbls, &QToolButton::clicked,
+        this, &InteractiveDigitalMontage::exportDesignatedLabels);
     connect(ui.toolButtonUndo, &QToolButton::clicked,
         ui.graphicsViewIntrctLbls, &MontageGraphicsView::clearIntrctPath);
     connect(ui.verticalSliderStrokeWidth, &QSlider::valueChanged,

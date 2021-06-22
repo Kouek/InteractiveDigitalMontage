@@ -200,15 +200,6 @@ void MontageCore::BuildSolveMRF(const std::vector<cv::Mat>& Images, const cv::Ma
 	int height = Label.rows;
 	int n_label = n_imgs;
 
-	/*convertScaleAbs(extra_data.YGrads[0][0], extra_data.YGrads[0][0]);
-	imwrite("tempR.png", extra_data.YGrads[0][0]);
-	convertScaleAbs(extra_data.YGrads[1][0], extra_data.YGrads[1][0]);
-	imwrite("tempG.png", extra_data.YGrads[1][0]);
-	convertScaleAbs(extra_data.YGrads[2][0], extra_data.YGrads[2][0]);
-	imwrite("tempB.png", extra_data.YGrads[2][0]);
-	TryAppendLMResultMsg("form: " + std::to_string(extra_data.XGrads[0][0].type()));
-	return;*/
-
 	GCoptimizationGridGraph* gc = new GCoptimizationGridGraph(width, height, n_imgs);
 	try
 	{
@@ -274,6 +265,7 @@ void MontageCore::GradientAt(const cv::Mat& Image, int x, int y, cv::Vec3f& grad
 	grad_y = color3 - color1;
 }
 
+static int constraintX, constraintY;
 void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, const cv::Mat& ResultLabel)
 {
 	int width = ResultLabel.cols;
@@ -290,8 +282,10 @@ void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, c
 		}
 	}
 
-
-	Vec3b color0 = Images[0].at<Vec3b>(0, 0);
+	/*constraintX = (width - 1) / 2 + 1;
+	constraintY = (height - 1) / 2 + 1;*/
+	constraintX = constraintY = 0;
+	Vec3b color0 = Images[0].at<Vec3b>(constraintY, constraintX);
 	SolveChannel(0, color0[0], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(1, color0[1], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(2, color0[2], color_gradient_x, color_gradient_y, color_result);
@@ -401,7 +395,9 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 
 	///constraint
 	int eq_idx = width * height * 2;
-	NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx, 0, 1));
+	NonZeroTerms.push_back(Eigen::Triplet<double>(
+		eq_idx, constraintY * width + constraintX, 1)
+	);
 	b(eq_idx) = constraint;
 
 	Eigen::SparseMatrix<double> A(NumOfUnknownTerm, width * height);

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1020</width>
-    <height>794</height>
+    <width>1316</width>
+    <height>780</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -410,6 +410,9 @@ color: rgb(255, 255, 255);</string>
             <widget class="QComboBox" name="comboBoxGradFuseSolver">
              <property name="toolTip">
               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Choose the Solver of Gradient Fusing&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             </property>
+             <property name="currentIndex">
+              <number>1</number>
              </property>
              <item>
               <property name="text">
@@ -838,6 +841,32 @@ color: rgb(255, 255, 255);</string>
           </widget>
          </item>
          <item>
+          <widget class="QToolButton" name="toolButtonExportLbls">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>30</width>
+             <height>30</height>
+            </size>
+           </property>
+           <property name="toolTip">
+            <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Export All Labels&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="InteractiveDigitalMontage.qrc">
+             <normaloff>:/InteractiveDigitalMontage/rsc/Export.png</normaloff>:/InteractiveDigitalMontage/rsc/Export.png</iconset>
+           </property>
+          </widget>
+         </item>
+         <item>
           <spacer name="verticalSpacer_2">
            <property name="orientation">
             <enum>Qt::Vertical</enum>
@@ -907,7 +936,7 @@ color: rgb(255, 255, 255);</string>
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="toolButtonAppendIntrctLabl">
+          <widget class="QToolButton" name="toolButtonAppendIntrctLbl">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -938,7 +967,7 @@ color: rgb(255, 255, 255);</string>
           </widget>
          </item>
          <item>
-          <widget class="QToolButton" name="toolButtonEraseIntrctLabl">
+          <widget class="QToolButton" name="toolButtonEraseIntrctLbl">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
              <horstretch>0</horstretch>
@@ -1027,7 +1056,7 @@ color: rgb(255, 255, 255);</string>
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1020</width>
+     <width>1316</width>
      <height>26</height>
     </rect>
    </property>
