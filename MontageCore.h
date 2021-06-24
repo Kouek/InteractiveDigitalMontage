@@ -8,6 +8,7 @@ public:
 	enum class SmoothTermType
 	{
 		X,
+		X_Plus_Y,
 		X_Divide_By_Z
 	};
 	enum class GradientFusionSolverType

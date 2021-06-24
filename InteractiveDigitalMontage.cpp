@@ -511,6 +511,21 @@ void InteractiveDigitalMontage::runLabelMatching()
             ui.textEditLblMatchRslts, tr("Start Label Matching"),
             Qt::GlobalColor::green, false
         );
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Smooth Type is: ")
+            + ui.comboBoxSmoothTermType->currentText(),
+            Qt::GlobalColor::black, false
+        );
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Large Penalty is: ")
+            + QString::fromStdString(std::to_string(ui.doubleSpinBoxDatTermLrgPnlty->value())),
+            Qt::GlobalColor::black, false
+        );
+        textEditSetText(
+            ui.textEditLblMatchRslts, tr("Smooth Alpha is: ")
+            + QString::fromStdString(std::to_string(ui.doubleSpinBoxDatTermAlpha->value())),
+            Qt::GlobalColor::black, false
+        );
         this->state = MainState::Labeling;
         break;
     }
@@ -727,15 +742,16 @@ void InteractiveDigitalMontage::exportGradFuseRslt()
         );
 }
 
-void InteractiveDigitalMontage::adjustSpinStepOnSmoothTypeChanged()
+void InteractiveDigitalMontage::adjustSpinBoxOnSmoothTypeChanged()
 {
     switch (ui.comboBoxSmoothTermType->currentIndex())
     {
     case 0:
+    case 1:
         ui.doubleSpinBoxDatTermLrgPnlty->setValue(1e8);
         ui.doubleSpinBoxDatTermAlpha->setValue(1.0);
         break;
-    case 1:
+    case 2:
         ui.doubleSpinBoxDatTermLrgPnlty->setValue(1000.0);
         ui.doubleSpinBoxDatTermAlpha->setValue(100.0);
         break;
@@ -796,7 +812,7 @@ InteractiveDigitalMontage::InteractiveDigitalMontage(QWidget *parent)
         this, &InteractiveDigitalMontage::exportGradFuseRslt);
 
     connect(ui.comboBoxSmoothTermType, QOverload<int>::of(&QComboBox::currentIndexChanged),
-        this, &InteractiveDigitalMontage::adjustSpinStepOnSmoothTypeChanged);
+        this, &InteractiveDigitalMontage::adjustSpinBoxOnSmoothTypeChanged);
 
     // maximize window
     setWindowState(Qt::WindowState::WindowMaximized);

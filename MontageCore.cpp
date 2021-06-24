@@ -7,11 +7,11 @@
 
 using namespace cv;
 
-
-static double large_penalty = 1e8;
-static double smooth_alpha = 100.0;
+static double large_penalty = 1e8; // can be modified by user
+static double smooth_alpha = 100.0; // can be modified by user
+// can be chosen by user
 static MontageCore::SmoothTermType smooth_type = MontageCore::SmoothTermType::X;
-
+// can be chosen by user
 static MontageCore::GradientFusionSolverType solver_type = MontageCore::GradientFusionSolverType::Eigen_Solver;
 
 // buffered images
@@ -56,13 +56,68 @@ GCoptimization::EnergyType dataFn(int p, int l, void* data)
 		return large_penalty;
 }
 
-GCoptimization::EnergyType euc_dist(const Vec3b& a, const Vec3b& b)
+static GCoptimization::EnergyType euc_dist(const Vec3b& a, const Vec3b& b)
 {
 	Vec3d double_diff = a - b;
 	return sqrt(double_diff[0] * double_diff[0] + double_diff[1] * double_diff[1] + double_diff[2] * double_diff[2]);
 }
 
-GCoptimization::EnergyType edge_potential(int x, int y,
+static GCoptimization::EnergyType six_comp_grad(
+	int xp, int yp, int xq, int yq, int lp, int lq,
+	const std::vector<cv::Mat>* XGrads, std::vector<cv::Mat>* YGrads)
+{
+	GCoptimization::EnergyType double_diff;
+	Vec3b vlp = Vec3b(
+		YGrads[0][lp].at<uchar>(yp, xp),
+		YGrads[1][lp].at<uchar>(yp, xp),
+		YGrads[2][lp].at<uchar>(yp, xp)
+	);
+	Vec3b vlq = Vec3b(
+		YGrads[0][lq].at<uchar>(yp, xp),
+		YGrads[1][lq].at<uchar>(yp, xp),
+		YGrads[2][lq].at<uchar>(yp, xp)
+	);
+	double_diff = euc_dist(vlp, vlq);
+
+	vlp = Vec3b(
+		YGrads[0][lp].at<uchar>(yq, xq),
+		YGrads[1][lp].at<uchar>(yq, xq),
+		YGrads[2][lp].at<uchar>(yq, xq)
+	);
+	vlq = Vec3b(
+		YGrads[0][lq].at<uchar>(yq, xq),
+		YGrads[1][lq].at<uchar>(yq, xq),
+		YGrads[2][lq].at<uchar>(yq, xq)
+	);
+	double_diff += euc_dist(vlp, vlq);
+
+	vlp = Vec3b(
+		XGrads[0][lp].at<uchar>(yp, xp),
+		XGrads[1][lp].at<uchar>(yp, xp),
+		XGrads[2][lp].at<uchar>(yp, xp)
+	);
+	vlq = Vec3b(
+		XGrads[0][lq].at<uchar>(yp, xp),
+		XGrads[1][lq].at<uchar>(yp, xp),
+		XGrads[2][lq].at<uchar>(yp, xp)
+	);
+	double_diff += euc_dist(vlp, vlq);
+
+	vlp = Vec3b(
+		XGrads[0][lp].at<uchar>(yq, xq),
+		XGrads[1][lp].at<uchar>(yq, xq),
+		XGrads[2][lp].at<uchar>(yq, xq)
+	);
+	vlq = Vec3b(
+		XGrads[0][lq].at<uchar>(yq, xq),
+		XGrads[1][lq].at<uchar>(yq, xq),
+		XGrads[2][lq].at<uchar>(yq, xq)
+	);
+	double_diff += euc_dist(vlp, vlq);
+	return double_diff;
+}
+
+static GCoptimization::EnergyType edge_potential(int x, int y,
 	const cv::Mat& rGrad, const cv::Mat& gGrad, const cv::Mat& bGrad)
 {
 	GCoptimization::EnergyType r, g, b;
@@ -102,6 +157,13 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	if (smooth_type == MontageCore::SmoothTermType::X)
 		return X_term;
 
+	if (smooth_type == MontageCore::SmoothTermType::X_Plus_Y)
+	{
+		double Y_term = six_comp_grad(xp, yp, xq, yq, lp, lq, XGrads, YGrads);
+		Y_term = X_term + Y_term;
+		return Y_term;
+	}
+
 	double Z_term = 0.0;
 	if (xp != xq)
 	{
@@ -126,13 +188,14 @@ double smoothFn(int p, int q, int lp, int lq, void* data)
 	return Z_term;
 }
 
-
+// used to return message to GUI
 void TryAppendResultMsg(std::string* msg, const std::string& str)
 {
 	if (msg == nullptr)return;
 	msg->append(str + "\n");
 }
 
+// used to return image or label to GUI
 static void TrySetResultMat(cv::Mat* mat, const cv::Mat& right)
 {
 	if (mat == nullptr)return;
@@ -265,7 +328,29 @@ void MontageCore::GradientAt(const cv::Mat& Image, int x, int y, cv::Vec3f& grad
 	grad_y = color3 - color1;
 }
 
+// used in funcs avgConstraintVec3b, BuildSolveGradientFusion and SolveChannel
+// state the position of constrant point
 static int constraintX, constraintY;
+
+static Vec3b avgConstraintVec3b(const std::vector<cv::Mat>& Images)
+{
+	Vec3b v3b;
+	Vec3d v3db(0, 0, 0);
+	double n_img = (double)Images.size();
+	for (auto img : Images)
+	{
+		v3b = img.at<Vec3b>(constraintY, constraintX);
+		v3db[0] += (double)v3b[0] / n_img;
+		v3db[1] += (double)v3b[1] / n_img;
+		v3db[2] += (double)v3b[2] / n_img;
+	}
+	v3b[0] = (uchar)std::max(0.0, std::min(255.0, v3db[0]));
+	v3b[1] = (uchar)std::max(0.0, std::min(255.0, v3db[1]));
+	v3b[2] = (uchar)std::max(0.0, std::min(255.0, v3db[2]));
+	return v3b;
+}
+
+
 void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, const cv::Mat& ResultLabel)
 {
 	int width = ResultLabel.cols;
@@ -282,10 +367,9 @@ void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, c
 		}
 	}
 
-	/*constraintX = (width - 1) / 2 + 1;
-	constraintY = (height - 1) / 2 + 1;*/
 	constraintX = constraintY = 0;
-	Vec3b color0 = Images[0].at<Vec3b>(constraintY, constraintX);
+	//Vec3b color0 = Images[0].at<Vec3b>(constraintY, constraintX);
+	Vec3b color0 = avgConstraintVec3b(Images);
 	SolveChannel(0, color0[0], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(1, color0[1], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(2, color0[2], color_gradient_x, color_gradient_y, color_result);
@@ -375,7 +459,7 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 		{
 			int unknown_idx = y * width + x;
 
-			/// gradient x
+			// gradient x
 			int eq_idx1 = 2 * unknown_idx;
 			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx1, unknown_idx, -1));
 			int other_idx1 = y * width + (x + 1);
@@ -383,7 +467,7 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 			Vec3f grads_x = color_gradient_x.at<Vec3f>(y, x);
 			b(eq_idx1) = grads_x[channel_idx];
 
-			/// gradient y
+			// gradient y
 			int eq_idx2 = 2 * unknown_idx + 1;
 			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx2, unknown_idx, -1));
 			int other_idx2 = (y + 1) * width + x;

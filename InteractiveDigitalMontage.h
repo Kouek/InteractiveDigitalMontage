@@ -68,7 +68,7 @@ public:
     void handleGradFuseRslt(const MontageGradientFusionResult& result);
     void exportGradFuseRslt();
 
-    void adjustSpinStepOnSmoothTypeChanged();
+    void adjustSpinBoxOnSmoothTypeChanged();
 public:
     InteractiveDigitalMontage(QWidget *parent = Q_NULLPTR);
 private:

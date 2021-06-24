@@ -171,6 +171,9 @@ MontageLabelMatchWorker::MontageLabelMatchWorker(
 		this->smoothType = MontageCore::SmoothTermType::X;
 		break;
 	case 1:
+		this->smoothType = MontageCore::SmoothTermType::X_Plus_Y;
+		break;
+	case 2:
 	default:
 		this->smoothType = MontageCore::SmoothTermType::X_Divide_By_Z;
 		break;
