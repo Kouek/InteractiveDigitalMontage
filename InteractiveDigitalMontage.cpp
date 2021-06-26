@@ -668,7 +668,12 @@ void InteractiveDigitalMontage::runGradientFuse()
             ui.textEditGradFuseRslts, tr("Start Gradient Fusion"),
             Qt::GlobalColor::green, false
         );
-        this->state = MainState::Labeling;
+        textEditSetText(
+            ui.textEditGradFuseRslts, tr("Solver Type is: ")
+            + ui.comboBoxGradFuseSolver->currentText(),
+            Qt::GlobalColor::black, false
+        );
+        this->state = MainState::GradientFusing;
         break;
     }
 

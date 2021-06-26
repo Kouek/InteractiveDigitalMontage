@@ -2,6 +2,7 @@
 #include "GCoptimization.h"
 #include <Eigen/Core>
 #include <Eigen/Sparse>
+#include "SparseMat.h"
 
 #include <sstream>
 
@@ -205,9 +206,6 @@ static void TrySetResultMat(cv::Mat* mat, const cv::Mat& right)
 void MontageCore::RunLabelMatch(const std::vector<cv::Mat>& Images, const cv::Mat& Label,
 	double LargePenalty, double SmoothAlpha, SmoothTermType SmoothType)
 {
-	assert(Images[0].rows == Label.rows);
-	assert(Images[0].cols == Label.cols);
-
 	large_penalty = LargePenalty;
 	smooth_alpha = SmoothAlpha;
 	smooth_type = SmoothType;
@@ -350,6 +348,98 @@ static Vec3b avgConstraintVec3b(const std::vector<cv::Mat>& Images)
 	return v3b;
 }
 
+// used in func prepareAandATA and SolveChannel
+// declare here to avoid duplicate cpmputation
+Eigen::SparseMatrix<double> A;
+Eigen::SparseMatrix<double> ATA;
+Kouek::SparseMat<double> myA;
+Kouek::SparseMat<double> myATA;
+
+static void prepareAandATA(int height, int width)
+{
+	int NumOfUnknownTerm = 2 * width * height + 1;
+	if (solver_type == MontageCore::GradientFusionSolverType::Eigen_Solver)
+	{
+		std::vector<Eigen::Triplet<double>> NonZeroTerms;
+		for (int y = 0; y < height - 1; y++)
+		{
+			for (int x = 0; x < width - 1; x++)
+			{
+				int unknown_idx = y * width + x;
+
+				// gradient x
+				int eq_idx1 = 2 * unknown_idx;
+				NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx1, unknown_idx, -1));
+				int other_idx1 = y * width + (x + 1);
+				NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx1, other_idx1, 1));
+
+				// gradient y
+				int eq_idx2 = 2 * unknown_idx + 1;
+				NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx2, unknown_idx, -1));
+				int other_idx2 = (y + 1) * width + x;
+				NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx2, other_idx2, 1));
+			}
+		}
+
+		///constraint
+		int eq_idx = width * height * 2;
+		NonZeroTerms.push_back(Eigen::Triplet<double>(
+			eq_idx, constraintY * width + constraintX, 1)
+		);
+
+		A = Eigen::SparseMatrix<double>(NumOfUnknownTerm, width * height);
+		A.setFromTriplets(NonZeroTerms.begin(), NonZeroTerms.end());
+		NonZeroTerms.erase(NonZeroTerms.begin(), NonZeroTerms.end());
+
+		ATA = Eigen::SparseMatrix<double>(width * height, width * height);
+		ATA = A.transpose() * A;
+	}
+	else if (solver_type == MontageCore::GradientFusionSolverType::My_Solver)
+	{
+		using namespace std;
+
+		int numOfUnknown = 2 * width * height + 1;
+		vector<double> b(numOfUnknown);
+
+		vector<int> nonZeroXs, nonZeroYs;
+		vector<double> nonZeroTerms;
+		for (int y = 0; y < height - 1; y++)
+		{
+			for (int x = 0; x < width - 1; x++)
+			{
+				int idx = y * width + x;
+				// gradient X
+				int eq_idx = 2 * idx;
+				nonZeroYs.push_back(eq_idx);
+				nonZeroXs.push_back(idx);
+				nonZeroTerms.push_back(-1.0);
+				int other_idx = y * width + (x + 1);
+				nonZeroYs.push_back(eq_idx);
+				nonZeroXs.push_back(other_idx);
+				nonZeroTerms.push_back(1.0);
+
+				// gradient Y
+				eq_idx = 2 * idx + 1;
+				nonZeroYs.push_back(eq_idx);
+				nonZeroXs.push_back(idx);
+				nonZeroTerms.push_back(-1.0);
+				other_idx = (y + 1) * width + x;
+				nonZeroYs.push_back(eq_idx);
+				nonZeroXs.push_back(other_idx);
+				nonZeroTerms.push_back(1.0);
+			}
+		}
+
+		nonZeroYs.push_back(numOfUnknown - 1);
+		nonZeroXs.push_back(0);
+		nonZeroTerms.push_back(1.0);
+
+		myA = Kouek::SparseMat<double>::initializeFromVector(
+			nonZeroYs, nonZeroXs, nonZeroTerms, nonZeroTerms.size()
+		); // A 2m*m
+		myATA = myA.ATA(); // ATA m*m
+	}
+}
 
 void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, const cv::Mat& ResultLabel)
 {
@@ -370,6 +460,7 @@ void MontageCore::BuildSolveGradientFusion(const std::vector<cv::Mat>& Images, c
 	constraintX = constraintY = 0;
 	//Vec3b color0 = Images[0].at<Vec3b>(constraintY, constraintX);
 	Vec3b color0 = avgConstraintVec3b(Images);
+	prepareAandATA(color_gradient_x.rows, color_gradient_x.cols);
 	SolveChannel(0, color0[0], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(1, color0[1], color_gradient_x, color_gradient_y, color_result);
 	SolveChannel(2, color0[2], color_gradient_x, color_gradient_y, color_result);
@@ -449,69 +540,101 @@ void MontageCore::SolveChannel(int channel_idx, int constraint, const cv::Mat& c
 {
 	int width = color_gradient_x.cols;
 	int height = color_gradient_x.rows;
-
 	int NumOfUnknownTerm = 2 * width * height + 1;
-	std::vector<Eigen::Triplet<double>> NonZeroTerms;
-	Eigen::VectorXd b(NumOfUnknownTerm);
-	for (int y = 0; y < height - 1; y++)
+
+	if (solver_type == GradientFusionSolverType::Eigen_Solver)
 	{
-		for (int x = 0; x < width - 1; x++)
+		Eigen::VectorXd b(NumOfUnknownTerm);
+		for (int y = 0; y < height - 1; y++)
 		{
-			int unknown_idx = y * width + x;
+			for (int x = 0; x < width - 1; x++)
+			{
+				int unknown_idx = y * width + x;
 
-			// gradient x
-			int eq_idx1 = 2 * unknown_idx;
-			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx1, unknown_idx, -1));
-			int other_idx1 = y * width + (x + 1);
-			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx1, other_idx1, 1));
-			Vec3f grads_x = color_gradient_x.at<Vec3f>(y, x);
-			b(eq_idx1) = grads_x[channel_idx];
+				// gradient x
+				int eq_idx1 = 2 * unknown_idx;
+				Vec3f grads_x = color_gradient_x.at<Vec3f>(y, x);
+				b(eq_idx1) = grads_x[channel_idx];
 
-			// gradient y
-			int eq_idx2 = 2 * unknown_idx + 1;
-			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx2, unknown_idx, -1));
-			int other_idx2 = (y + 1) * width + x;
-			NonZeroTerms.push_back(Eigen::Triplet<double>(eq_idx2, other_idx2, 1));
-			Vec3f grads_y = color_gradient_y.at<Vec3f>(y, x);
-			b(eq_idx2) = grads_y[channel_idx];
+				// gradient y
+				int eq_idx2 = 2 * unknown_idx + 1;
+				Vec3f grads_y = color_gradient_y.at<Vec3f>(y, x);
+				b(eq_idx2) = grads_y[channel_idx];
+			}
+		}
+
+		int eq_idx = width * height * 2;
+		b(eq_idx) = constraint;
+
+		Eigen::VectorXd ATb = A.transpose() * b;
+
+		printf("\nSolving...\n");
+		Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> CGSolver(ATA);
+		Eigen::VectorXd solution = CGSolver.solve(ATb);
+
+		Eigen::VectorXd solvAX = A * solution;
+		TryAppendResultMsg(
+			ResultMsg,
+			"Constraint of channel " + std::to_string(channel_idx) + " is: " + std::to_string(constraint)
+			+ ", and the solved one is: " + std::to_string(solvAX(eq_idx))
+		);
+		printf("Solved!\n");
+
+		for (int y = 0; y < height; y++)
+		{
+			for (int x = 0; x < width; x++)
+			{
+				Vec3b& temp = output.at<Vec3b>(y, x);
+				temp[channel_idx] = uchar(std::max(std::min(solution(y * width + x), 255.0), 0.0));
+			}
 		}
 	}
-
-	///constraint
-	int eq_idx = width * height * 2;
-	NonZeroTerms.push_back(Eigen::Triplet<double>(
-		eq_idx, constraintY * width + constraintX, 1)
-	);
-	b(eq_idx) = constraint;
-
-	Eigen::SparseMatrix<double> A(NumOfUnknownTerm, width * height);
-	A.setFromTriplets(NonZeroTerms.begin(), NonZeroTerms.end());
-	NonZeroTerms.erase(NonZeroTerms.begin(), NonZeroTerms.end());
-
-	Eigen::SparseMatrix<double> ATA(width * height, width * height);
-	ATA = A.transpose() * A;
-	Eigen::VectorXd ATb = A.transpose() * b;
-
-	printf("\nSolving...\n");
-	Eigen::ConjugateGradient<Eigen::SparseMatrix<double>> CGSolver(ATA);
-	Eigen::VectorXd solution = CGSolver.solve(ATb);
-
-	Eigen::VectorXd solvAX = A * solution;
-	TryAppendResultMsg(
-		ResultMsg,
-		"Constraint of channel " + std::to_string(channel_idx) + " is: " + std::to_string(constraint)
-		+ ", and the solved one is: " + std::to_string(solvAX(eq_idx))
-	);
-	printf("Solved!\n");
-
-	for (int y = 0; y < height; y++)
+	else if (solver_type == GradientFusionSolverType::My_Solver)
 	{
-		for (int x = 0; x < width; x++)
+		using namespace std;
+		vector<double> b(NumOfUnknownTerm);
+
+		for (int y = 0; y < height - 1; y++)
 		{
-			Vec3b& temp = output.at<Vec3b>(y, x);
-			temp[channel_idx] = uchar(std::max(std::min(solution(y * width + x), 255.0), 0.0));
-			//printf("%d,%d,  %f, %f\n",y,x, solution(y * width + x), ATb(y*width + x));
-			//system("pause");
+			for (int x = 0; x < width - 1; x++)
+			{
+				int idx = y * width + x;
+				// gradient X
+				int eq_idx = 2 * idx;
+				b[eq_idx] = color_gradient_x.at<Vec3f>(y, x)[channel_idx];
+
+				// gradient Y
+				eq_idx = 2 * idx + 1;
+				b[eq_idx] = color_gradient_y.at<Vec3f>(y, x)[channel_idx];
+			}
 		}
+
+		b[NumOfUnknownTerm - 1] = constraint;
+
+		Kouek::SparseMat<double> AT = myA.transpose(); // AT m*2m
+		vector<double> ATb; // ATb m*1
+		AT.multiply(ATb, b);
+
+		vector<double> sol(ATb.size(), 0);
+		sol[constraintY * width + constraintX] = constraint; // set constraint
+		printf("\nSolving...\n");
+		bool ret = Kouek::SparseMat<double>::solveInConjugateGradient(myATA, sol, ATb, 10.0);
+		TryAppendResultMsg(
+			ResultMsg,
+			"Solved. Cov is " + std::to_string(ret)
+		);
+		printf("Solved. Cov is %d\n", ret);
+
+		for (int y = 0; y < height - 1; y++)
+		{
+			for (int x = 0; x < width - 1; x++)
+			{
+				Vec3b& temp = output.at<Vec3b>(y, x);
+				temp[channel_idx] = uchar(std::max(std::min(sol[y * width + x], 255.0), 0.0));
+			}
+		}
+		//String fn = "result";
+		//fn += std::to_string(channel_idx) + ".png";
+		//imwrite(fn, output);
 	}
 }

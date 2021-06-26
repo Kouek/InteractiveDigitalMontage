@@ -125,6 +125,7 @@
     <ClInclude Include="lib\gco-v3.0\graph.h" />
     <ClInclude Include="lib\gco-v3.0\LinkedBlockList.h" />
     <ClInclude Include="MontageCore.h" />
+    <ClInclude Include="SparseMat.h" />
     <QtMoc Include="MontageThreadController.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

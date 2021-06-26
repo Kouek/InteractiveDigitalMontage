@@ -93,5 +93,8 @@
     <ClInclude Include="lib\gco-v3.0\LinkedBlockList.h">
       <Filter>gco</Filter>
     </ClInclude>
+    <ClInclude Include="SparseMat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
