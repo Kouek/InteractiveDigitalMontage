@@ -16,7 +16,7 @@ The program implements parts of the original paper, including:
 
 ## Start up
 
-* install Visual Studio
+* install Microsoft Visual Studio
 * install Qt 5
-* install Visual Studio Qt Extention in Extention Management of Visual Studio
+* install Visual Studio Qt Extension in Extension Management of Visual Studio
 * open .sln with Visual Studio
